@@ -246,9 +246,13 @@ function ritaEkonomi(){
   const namn = ['Resten av idag','Imorgon','Övermorgon'];
   const dagar = e.dagar || [];
   const sum = f => dagar.reduce((a, d) => a + (d[f] || 0), 0);
-  const rad = (etikett, kop, salj, slit, klass) =>
-      `<div class="sub${klass || ''}">${etikett}: köpt <b>${kr(kop)}</b> kr, `
-    + `sålt <b>${kr(salj)}</b> kr, slitage <b>${kr(slit)}</b> kr</div>`;
+  // Netto = kopt - salt + slitage. Positivt ar en kostnad, negativt en intakt.
+  const rad = (etikett, kop, salj, slit, klass) => {
+    const netto = kop - salj + slit;
+    return `<div class="sub${klass || ''}">${etikett}: köpt <b>${kr(kop)}</b> kr, `
+      + `sålt <b>${kr(salj)}</b> kr, slitage <b>${kr(slit)}</b> kr `
+      + `&rarr; netto <b style="color:${netto <= 0 ? 'var(--self)' : 'var(--fg)'}">${kr(netto)}</b> kr</div>`;
+  };
 
   const rader = dagar.map(d => rad(namn[d.dag] || ('Dag ' + d.dag), d.kop, d.salj, d.slit)).join('')
     + (dagar.length > 1 ? rad('Totalt', sum('kop'), sum('salj'), sum('slit'), ' total') : '');
@@ -256,8 +260,9 @@ function ritaEkonomi(){
     `<div class="kpi stor"><div class="k">Vinst mot utan batteri, hela horisonten</div>`
   + `<div class="v">${kr(e.vinstMotUtan)}<span class="u">kr</span></div>${rader}</div>`;
   document.getElementById('econnote').textContent =
-    'Vinsten avser hela horisonten och räknar in batteriets nivå vid slutet. '
-  + 'Ett enskilt dygn går inte att räkna för sig, eftersom batteriet flyttar värde mellan dygnen.';
+    'Netto är köpt minus sålt plus slitage: positivt är en kostnad, negativt en nettointäkt. '
+  + 'Vinsten avser hela horisonten och räknar in batteriets nivå vid slutet. Ett enskilt dygn '
+  + 'går inte att räkna för sig, eftersom batteriet flyttar värde mellan dygnen.';
 }
 
 // ---------- Timme för timme ----------
