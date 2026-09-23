@@ -1,0 +1,1053 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>DP-EMS Plan</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  :root {
+    --bg:        #0c1220;
+    --surface:   #131d2e;
+    --surface2:  #1a2640;
+    --border:    #1e3050;
+    --text:      #c8d8f0;
+    --muted:     #5a7090;
+    --self:      #22c55e;
+    --stop:      #475569;
+    --charge:    #3b82f6;
+    --discharge: #f59e0b;
+    --now:       #f43f5e;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    box-sizing: border-box;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', sans-serif;
+    font-size: 14px;
+    min-height: 100vh;
+    padding: 24px 20px;
+  }
+
+  header {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+
+  h1 {
+    font-size: 18px;
+    font-weight: 600;
+    letter-spacing: -0.3px;
+    color: #e8f0ff;
+  }
+
+  #generated {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  /* Paste area */
+  #paste-section {
+    margin-bottom: 24px;
+  }
+
+  textarea {
+    width: 100%;
+    height: 80px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    padding: 10px 12px;
+    resize: vertical;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+
+  textarea:focus { border-color: var(--charge); }
+
+  textarea::placeholder { color: var(--muted); }
+
+  button {
+    margin-top: 8px;
+    padding: 7px 16px;
+    background: var(--charge);
+    color: #fff;
+    border: none;
+    border-radius: 5px;
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+  }
+
+  button:hover { opacity: 0.85; }
+
+  /* Legend */
+  #legend {
+    display: flex;
+    gap: 20px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+
+  .leg {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  .leg-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+  }
+
+  /* Summary row */
+  #summary {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+  }
+
+  .stat {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px 14px;
+    min-width: 100px;
+  }
+
+  .stat-label {
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+
+  .stat-value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 16px;
+    font-weight: 500;
+  }
+
+  /* Timeline */
+  #timeline-wrap {
+    overflow-x: auto;
+    padding-bottom: 8px;
+  }
+
+  #timeline {
+    display: flex;
+    align-items: flex-end;
+    gap: 1px;
+    height: 80px;
+    min-width: 600px;
+    position: relative;
+  }
+
+  .bar {
+    flex: 1;
+    border-radius: 2px 2px 0 0;
+    cursor: pointer;
+    transition: opacity 0.1s;
+    position: relative;
+    min-height: 6px;
+  }
+
+  .bar:hover { opacity: 0.75; }
+  .bar.now-marker { outline: 2px solid var(--now); outline-offset: 1px; }
+
+  /* Hour labels */
+  #hour-labels {
+    display: flex;
+    min-width: 600px;
+    margin-top: 4px;
+    position: relative;
+  }
+
+  .hour-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--muted);
+    position: absolute;
+    transform: translateX(-50%);
+  }
+
+  /* Tooltip */
+  #tooltip {
+    position: fixed;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 12px;
+    pointer-events: none;
+    display: none;
+    z-index: 100;
+    min-width: 140px;
+  }
+
+  #tooltip .t-time { font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 500; margin-bottom: 4px; }
+  #tooltip .t-mode { font-size: 12px; }
+  #tooltip .t-power { color: var(--muted); font-size: 11px; margin-top: 2px; }
+
+  /* Day dividers */
+  .day-label {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 14px;
+    margin-bottom: 8px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  #error { color: var(--discharge); font-size: 13px; margin-top: 8px; display: none; }
+  #content { display: none; }
+</style>
+</head>
+<body>
+
+<header>
+  
+<style>
+  #conn { background:var(--surface); border:1px solid var(--border); border-radius:8px;
+          padding:16px; margin-bottom:28px }
+  #conn h2 { margin:0 0 10px; font-size:15px; font-family:'Inter',sans-serif; color:#e8f0ff }
+  #conn label { display:block; font-size:11px; color:var(--muted); margin:10px 0 3px;
+                text-transform:uppercase; letter-spacing:.05em }
+  #conn input { width:100%; box-sizing:border-box; background:var(--surface2);
+                border:1px solid var(--border); border-radius:5px; color:var(--fg);
+                padding:8px 10px; font-family:'JetBrains Mono',monospace; font-size:12px }
+  #conn .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:12px }
+  #conn-status { font-size:12px; font-family:'JetBrains Mono',monospace }
+  .ok  { color:var(--self) }
+  .bad { color:var(--discharge) }
+  #paste-wrap { margin-top:14px }
+  #paste-wrap > summary { cursor:pointer; color:var(--muted); font-size:12px }
+</style>
+
+<div id="conn">
+  <h2>Anslutning till Homey</h2>
+  <label>Adress (lämna tom för att prova automatiskt)</label>
+  <input id="c-url" placeholder="t.ex. http://homey.local eller https://xxxx.connect.athom.com">
+  <label>Token</label>
+  <input id="c-token" type="password" placeholder="Personal Access Token">
+  <div class="row">
+    <button onclick="testaAnslutning()">Testa anslutning</button>
+    <button onclick="hamtaNu()">Hämta nu</button>
+    <button onclick="glomUppgifter()">Glöm uppgifter</button>
+    <button onclick="skapaBokmarke()">Skapa bokmärkeslänk</button>
+    <label style="text-transform:none;letter-spacing:0;margin:0;display:flex;align-items:center;gap:6px">
+      <input type="checkbox" id="c-auto" style="width:auto" checked> uppdatera varje minut
+    </label>
+    <span id="conn-status"></span>
+  </div>
+  <div id="conn-log" style="margin-top:10px;font-size:11px;
+       font-family:'JetBrains Mono',monospace;line-height:1.7"></div>
+  <div style="font-size:11px;color:var(--muted);margin-top:10px">
+    Adress och token sparas bara i den här webbläsaren och skickas ingen annanstans.
+  </div>
+</div>
+
+<script>
+const VAR_NAMES = { plan: 'DP_Plan', debug: 'DP_Debug', exec: 'DP_Exec_Log' };
+
+// Kandidater som provas nar adressfaltet lamnats tomt.
+// location.origin tas bara med nar sidan laddats over http eller https;
+// fran en lokal fil ar den "null" och duger inte.
+function kandidater() {
+  const egen = document.getElementById('c-url').value.trim().replace(/\/+$/, '');
+  if (egen) return [egen];
+  const c = ['http://homey.local', 'http://homey'];
+  if (location.protocol.startsWith('http')) c.push(location.origin);
+  return c;
+}
+
+function status(text, klass) {
+  const el = document.getElementById('conn-status');
+  el.textContent = text;
+  el.className = klass || '';
+}
+
+// Tva varianter. Med token i huvudet kravs en forhandsforfragan (OPTIONS),
+// vilket CORS kan stoppa. Med token i adressen blir det en enkel forfragan
+// utan forhandskontroll. Fungerar bara den andra ar det CORS som staller till det.
+async function hamtaVariabler(bas, token, variant) {
+  const url = bas + '/api/manager/logic/variable'
+            + (variant === 'query' ? '?token=' + encodeURIComponent(token) : '');
+  const opt = variant === 'query' ? {} : { headers: { Authorization: 'Bearer ' + token } };
+  const r = await fetch(url, opt);
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return r.json();
+}
+
+async function testaAnslutning() {
+  const token = document.getElementById('c-token').value.trim();
+  const rader = [];
+  const visa = () => { document.getElementById('conn-log').innerHTML = rader.join('<br>'); };
+
+  if (!token) { status('token saknas', 'bad'); return null; }
+  if (location.protocol === 'file:')
+    rader.push('<span class="bad">sidan körs från en lokal fil; vissa webbläsare blockerar alla anrop då</span>');
+
+  for (const bas of kandidater()) {
+    for (const variant of ['header', 'query']) {
+      status(`provar ${bas} (${variant}) …`);
+      try {
+        const data = await hamtaVariabler(bas, token, variant);
+        const namn = Object.values(data).map(v => v.name);
+        const saknas = Object.values(VAR_NAMES).filter(n => !namn.includes(n));
+        if (saknas.length) {
+          rader.push(`<span class="bad">${bas} (${variant}): svarar men saknar ${saknas.join(', ')}</span>`);
+          continue;
+        }
+        rader.push(`<span class="ok">${bas} (${variant}): OK</span>`);
+        visa();
+        localStorage.setItem('dpems', JSON.stringify({ bas, token, variant }));
+        status('ansluten: ' + bas, 'ok');
+        return { bas, token, variant };
+      } catch (e) {
+        rader.push(`<span class="bad">${bas} (${variant}): ${e.message}</span>`);
+      }
+    }
+  }
+  visa();
+  status('ingen adress svarade', 'bad');
+  return null;
+}
+
+async function hamtaNu() {
+  let cfg = null;
+  try { cfg = JSON.parse(localStorage.getItem('dpems')); } catch (e) {}
+  const token = document.getElementById('c-token').value.trim();
+  if (!cfg || (token && token !== cfg.token)) cfg = await testaAnslutning();
+  if (!cfg) return;
+
+  let data;
+  try { data = await hamtaVariabler(cfg.bas, cfg.token, cfg.variant); }
+  catch (e) { status('hämtning misslyckades: ' + e.message, 'bad'); return; }
+
+  const varden = {};
+  Object.values(data).forEach(v => { varden[v.name] = v.value; });
+
+  if (varden[VAR_NAMES.plan])  { document.getElementById('json-input').value = varden[VAR_NAMES.plan];  loadPlan(); }
+  if (varden[VAR_NAMES.debug]) { document.getElementById('dbg-input').value  = varden[VAR_NAMES.debug]; loadDebug(); }
+  if (varden[VAR_NAMES.exec])  { document.getElementById('ex-input').value   = varden[VAR_NAMES.exec];  loadExec(); }
+
+  const t = new Date();
+  status(`uppdaterad ${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}`, 'ok');
+}
+
+// Spara direkt nar falten andras, inte bara vid lyckat test
+function sparaFalt() {
+  const bas   = document.getElementById('c-url').value.trim().replace(/\/+$/, '');
+  const token = document.getElementById('c-token').value.trim();
+  let cfg = {};
+  try { cfg = JSON.parse(localStorage.getItem('dpems')) || {}; } catch (e) {}
+  try { localStorage.setItem('dpems', JSON.stringify({ ...cfg, bas, token })); }
+  catch (e) { status('webbläsaren tillåter inte att uppgifter sparas', 'bad'); }
+}
+
+function glomUppgifter() {
+  try { localStorage.removeItem('dpems'); } catch (e) {}
+  document.getElementById('c-url').value = '';
+  document.getElementById('c-token').value = '';
+  status('uppgifterna borttagna', '');
+}
+
+// Bokmarke som oppnar sidan fardiginstalld. Token hamnar da i lanken,
+// sa spara den bara som privat bokmarke och dela den aldrig.
+function skapaBokmarke() {
+  const bas   = document.getElementById('c-url').value.trim().replace(/\/+$/, '');
+  const token = document.getElementById('c-token').value.trim();
+  if (!bas || !token) { status('fyll i adress och token först', 'bad'); return; }
+  const lank = location.origin + location.pathname
+             + '#bas=' + encodeURIComponent(bas) + '&token=' + encodeURIComponent(token);
+  document.getElementById('conn-log').innerHTML =
+    'Spara den här länken som bokmärke. Den innehåller din token, så dela den inte:<br>'
+    + '<span style="word-break:break-all">' + lank + '</span>';
+}
+
+// Uppstart. Vantar tills hela sidan ar laddad, eftersom hamtningen
+// anvander funktioner som definieras i skriptblocken langre ner.
+window.addEventListener('load', () => {
+  let cfg = null;
+  try { cfg = JSON.parse(localStorage.getItem('dpems')); } catch (e) {}
+
+  // Uppgifter i adressen vinner, och stadas bort ur adressfaltet
+  const h = new URLSearchParams(location.hash.slice(1));
+  if (h.get('bas') && h.get('token')) {
+    cfg = { bas: h.get('bas'), token: h.get('token'), variant: cfg && cfg.variant };
+    try { localStorage.setItem('dpems', JSON.stringify(cfg)); } catch (e) {}
+    history.replaceState(null, '', location.pathname);
+  }
+
+  if (cfg) {
+    document.getElementById('c-url').value = cfg.bas || '';
+    document.getElementById('c-token').value = cfg.token || '';
+    hamtaNu();
+  }
+
+  document.getElementById('c-url').addEventListener('change', sparaFalt);
+  document.getElementById('c-token').addEventListener('change', sparaFalt);
+
+  setInterval(() => {
+    if (document.getElementById('c-auto').checked) hamtaNu();
+  }, 60000);
+});
+</script>
+
+<h1>DP-EMS Plan</h1>
+  <span id="generated"></span>
+</header>
+
+<div id="paste-section">
+  <textarea id="json-input" placeholder="Klistra in DP_Plan JSON här..."></textarea>
+  <br>
+  <button onclick="loadPlan()">Visa plan</button>
+  <div id="error"></div>
+</div>
+
+<div id="content">
+  <div id="legend">
+    <div class="leg"><div class="leg-dot" style="background:var(--self)"></div>Self</div>
+    <div class="leg"><div class="leg-dot" style="background:var(--stop)"></div>Stop</div>
+    <div class="leg"><div class="leg-dot" style="background:var(--charge)"></div>Charge</div>
+    <div class="leg"><div class="leg-dot" style="background:var(--discharge)"></div>Discharge</div>
+    <div class="leg"><div class="leg-dot" style="background:var(--now); border-radius:50%"></div>Nu</div>
+  </div>
+
+  <div id="summary"></div>
+  <div id="days-container"></div>
+</div>
+
+<div id="tooltip">
+  <div class="t-time" id="t-time"></div>
+  <div class="t-mode" id="t-mode"></div>
+  <div class="t-power" id="t-power"></div>
+</div>
+
+<script>
+const COLORS = {
+  Self:      'var(--self)',
+  Stop:      'var(--stop)',
+  Charge:    'var(--charge)',
+  Discharge: 'var(--discharge)',
+};
+
+const BASE_HEIGHT = 20;  // px för Self/Stop
+const MAX_HEIGHT  = 80;
+const MAX_POWER   = 10.6;  // kW, vaxelriktarens max
+
+function qToTime(q) {
+  const h = Math.floor(q / 4);
+  const m = (q % 4) * 15;
+  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+}
+
+function barHeight(mode, power) {
+  if (mode === 'Charge' || mode === 'Discharge') {
+    return BASE_HEIGHT + (power / MAX_POWER) * (MAX_HEIGHT - BASE_HEIGHT);
+  }
+  return BASE_HEIGHT;
+}
+
+function loadPlan() {
+  const input = document.getElementById('json-input').value.trim();
+  const errEl = document.getElementById('error');
+  errEl.style.display = 'none';
+
+  let data;
+  try {
+    data = JSON.parse(input);
+  } catch(e) {
+    errEl.textContent = 'Ogiltig JSON – klistra in hela DP_Plan-variabelns värde.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  if (!data.plan || !Array.isArray(data.plan)) {
+    errEl.textContent = 'Formatet stämmer inte – saknar "plan"-array.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  renderPlan(data);
+  document.getElementById('content').style.display = 'block';
+}
+
+function renderPlan(data) {
+  const plan = data.plan;
+  const now  = new Date();
+  const nowQ = now.getHours() * 4 + Math.floor(now.getMinutes() / 15);
+
+  // Generated timestamp
+  if (data.generated) {
+    const d = new Date(data.generated);
+    document.getElementById('generated').textContent =
+      `Genererad ${d.toLocaleTimeString('sv-SE', {hour:'2-digit',minute:'2-digit'})}`;
+  }
+
+  // Summary
+  const counts = { Self: 0, Stop: 0, Charge: 0, Discharge: 0 };
+  let chargeKwh = 0, dischargeKwh = 0;
+  for (const e of plan) {
+    counts[e.mode] = (counts[e.mode] || 0) + 1;
+    if (e.mode === 'Charge')    chargeKwh    += (e.power || 0) * 0.25;
+    if (e.mode === 'Discharge') dischargeKwh += (e.power || 0) * 0.25;
+  }
+
+  const summaryEl = document.getElementById('summary');
+  summaryEl.innerHTML = '';
+
+  const stats = [
+    { label: 'Tidssteg', value: plan.length, unit: 'kvartar' },
+    { label: 'Planerad laddning', value: chargeKwh.toFixed(1), unit: 'kWh' },
+    { label: 'Planerad urladdning', value: dischargeKwh.toFixed(1), unit: 'kWh' },
+    { label: 'Self', value: counts.Self, unit: 'kvartar' },
+    { label: 'Stop', value: counts.Stop, unit: 'kvartar' },
+  ];
+
+  for (const s of stats) {
+    const el = document.createElement('div');
+    el.className = 'stat';
+    el.innerHTML = `<div class="stat-label">${s.label}</div>
+      <div class="stat-value">${s.value} <span style="font-size:11px;color:var(--muted)">${s.unit}</span></div>`;
+    summaryEl.appendChild(el);
+  }
+
+  // Group by day
+  const days = {};
+  for (const e of plan) {
+    const d = e.day || 0;
+    if (!days[d]) days[d] = [];
+    days[d].push(e);
+  }
+
+  const container = document.getElementById('days-container');
+  container.innerHTML = '';
+
+  const tooltip = document.getElementById('tooltip');
+
+  for (const [day, entries] of Object.entries(days)) {
+    const dayNum = parseInt(day);
+    const label  = ['Idag','Imorgon','Övermorgon'][dayNum] || ('Dag ' + dayNum);
+
+    const dayLabel = document.createElement('div');
+    dayLabel.className = 'day-label';
+    dayLabel.textContent = label;
+    container.appendChild(dayLabel);
+
+    const wrap = document.createElement('div');
+    wrap.id = 'timeline-wrap';
+    const tl   = document.createElement('div');
+    tl.id = 'timeline';
+    const hl   = document.createElement('div');
+    hl.id = 'hour-labels';
+
+    for (const entry of entries) {
+      const bar = document.createElement('div');
+      bar.className = 'bar';
+      const h = barHeight(entry.mode, entry.power || 0);
+      bar.style.height   = h + 'px';
+      bar.style.background = COLORS[entry.mode] || 'var(--muted)';
+
+      // Current quarter marker
+      if (dayNum === 0 && entry.q === nowQ) {
+        bar.classList.add('now-marker');
+      }
+
+      // Tooltip
+      bar.addEventListener('mousemove', (ev) => {
+        tooltip.style.display = 'block';
+        tooltip.style.left = Math.min(ev.clientX + 12, window.innerWidth - 160) + 'px';
+        tooltip.style.top  = (ev.clientY - 70) + 'px';
+        document.getElementById('t-time').textContent =
+          `${label} ${qToTime(entry.q)}–${qToTime((entry.q + 1) % 96)}`;
+        document.getElementById('t-mode').textContent = entry.mode;
+        document.getElementById('t-power').textContent =
+          entry.power ? `${entry.power} kW` : '';
+      });
+      bar.addEventListener('mouseleave', () => { tooltip.style.display = 'none'; });
+
+      tl.appendChild(bar);
+    }
+
+    // Hour labels
+    const firstQ = entries[0].q;
+    const total  = entries.length;
+    for (let i = 0; i <= Math.floor(total / 4); i++) {
+      const lbl = document.createElement('div');
+      lbl.className = 'hour-label';
+      lbl.textContent = qToTime((firstQ + i * 4) % 96);
+      lbl.style.left = `${(i * 4 / total) * 100}%`;
+      hl.appendChild(lbl);
+    }
+
+    wrap.appendChild(tl);
+    wrap.appendChild(hl);
+    container.appendChild(wrap);
+  }
+}
+
+// Auto-load if there's something in the textarea on page load
+window.addEventListener('DOMContentLoaded', () => {
+  const ta = document.getElementById('json-input');
+  if (ta.value.trim()) loadPlan();
+});
+</script>
+
+<style>
+  #debug-section{margin-top:44px;padding-top:24px;border-top:1px solid var(--border)}
+  #debug-section h1{font-size:18px;font-weight:600;margin:0 0 16px;color:#e8f0ff;
+    font-family:'Inter',sans-serif;letter-spacing:-.3px}
+  .dbg-grid{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:18px}
+  .dbg-stat{background:var(--surface);border:1px solid var(--border);border-radius:6px;
+    padding:9px 13px;min-width:96px}
+  .dbg-stat .k{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;
+    margin-bottom:3px}
+  .dbg-stat .v{font-family:'JetBrains Mono',monospace;font-size:15px;font-weight:500}
+  .dbg-stat .u{font-size:10px;color:var(--muted);margin-left:2px}
+  .dbg-h{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);
+    font-family:'Inter',sans-serif;font-weight:600;margin:22px 0 8px}
+  .chips{display:flex;gap:8px;flex-wrap:wrap}
+  .chip{background:var(--surface2);border:1px solid var(--border);border-radius:14px;
+    padding:4px 11px;font-size:12px;font-family:'JetBrains Mono',monospace}
+  .chip b{color:var(--muted);font-weight:400;font-family:'Inter',sans-serif;
+    font-size:11px;margin-right:5px}
+  table.dbg{border-collapse:collapse;width:100%;font-size:12px;
+    font-family:'JetBrains Mono',monospace;min-width:460px}
+  table.dbg th{text-align:left;padding:5px 8px;color:var(--muted);font-size:10px;
+    text-transform:uppercase;letter-spacing:.05em;font-family:'Inter',sans-serif;
+    border-bottom:1px solid var(--border)}
+  table.dbg td{padding:4px 8px;border-bottom:1px solid var(--border)}
+  .badge{display:inline-block;padding:1px 7px;border-radius:3px;font-size:11px;color:#06121a}
+  .dbg-barcell{position:relative;min-width:120px}
+  .dbg-bar{position:absolute;left:0;top:50%;transform:translateY(-50%);height:11px;
+    border-radius:2px;opacity:.5}
+  .dbg-barcell span{position:relative}
+  #dbg-error{color:var(--discharge);font-size:13px;margin-top:8px;display:none}
+  #dbg-content{display:none}
+  .scroll{overflow-x:auto}
+</style>
+
+<div id="debug-section">
+  <h1>DP_Debug</h1>
+  <textarea id="dbg-input" placeholder="Klistra in DP_Debug här..."></textarea>
+  <br>
+  <button onclick="loadDebug()">Visa debug</button>
+  <div id="dbg-error"></div>
+  <div id="dbg-content"></div>
+</div>
+
+<script>
+const MODE_COL = { Self:'var(--self)', Stop:'var(--stop)',
+                   Charge:'var(--charge)', Discharge:'var(--discharge)' };
+
+function esc(s){ return String(s).replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[m])); }
+
+function stat(k, v, u) {
+  return `<div class="dbg-stat"><div class="k">${k}</div>
+          <div class="v">${v}<span class="u">${u||''}</span></div></div>`;
+}
+function chip(k, v) { return `<span class="chip"><b>${k}</b>${esc(v)}</span>`; }
+
+// Debugen forkortar lagen till fyra tecken; normalisera till fulla namn
+const MODE_FULL = { Self:'Self', Stop:'Stop', Char:'Charge', Disc:'Discharge',
+                    Charge:'Charge', Discharge:'Discharge' };
+function modeBadge(m, pw) {
+  m = MODE_FULL[m] || m;
+  const col = MODE_COL[m] || 'var(--muted)';
+  return `<span class="badge" style="background:${col}">${m}${pw?' '+pw:''}</span>`;
+}
+
+// Tidsetikett for ett kvartal 0-95
+function qTime(q){
+  q = ((q % 96) + 96) % 96;
+  return `${String(Math.floor(q/4)).padStart(2,'0')}:${String((q%4)*15).padStart(2,'0')}`;
+}
+
+// Alla serier ryms: raderna skickas ihopslagna med ¦ och delas upp har.
+function dbgTip(ev, time, rows, extra){
+  const tt = document.getElementById('tooltip');
+  const list = String(rows).split('¦').filter(Boolean);
+  tt.style.display = 'block';
+  tt.style.left = Math.min(ev.clientX + 14, window.innerWidth - 190) + 'px';
+  tt.style.top  = Math.max(8, ev.clientY - 30 - list.length * 16) + 'px';
+  document.getElementById('t-time').textContent  = time;
+  document.getElementById('t-mode').innerHTML    = list.join('<br>');
+  document.getElementById('t-power').textContent = extra || '';
+}
+function dbgTipHide(){ document.getElementById('tooltip').style.display = 'none'; }
+
+// Staplar for bars, linjer for lines, osynliga hovringsytor per index
+function chartHover(cfg){
+  const w = cfg.w || 640, h = cfg.h || 100;
+  const lines = cfg.lines || [];
+  const all = [].concat(cfg.bars ? cfg.bars.v : [], ...lines.map(l => l.v));
+  const lo = cfg.min !== undefined ? cfg.min : Math.min(0, ...all);
+  const hi = cfg.max !== undefined ? cfg.max : Math.max(...all, 0.001);
+  const n  = Math.max(cfg.bars ? cfg.bars.v.length : 0, ...lines.map(l => l.v.length));
+  const L = 34, R = 6;
+  const step = (w - L - R) / n;
+  const xc = i => L + step * (i + 0.5);
+  const y  = v => h - 16 - (v - lo) / ((hi - lo) || 1) * (h - 26);
+
+  let s = `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:${h}px">`;
+  s += `<line x1="${L}" y1="${y(Math.max(lo,0))}" x2="${w-R}" y2="${y(Math.max(lo,0))}" stroke="var(--border)"/>`;
+  s += `<text x="0" y="${y(hi)+4}" fill="var(--muted)" font-size="9">${hi.toFixed(2)}</text>`;
+  s += `<text x="0" y="${y(lo)+4}" fill="var(--muted)" font-size="9">${lo.toFixed(2)}</text>`;
+
+  if (cfg.bars){
+    const bw = Math.max(1, step * 0.68);
+    const y0 = y(Math.max(lo, 0));
+    cfg.bars.v.forEach((v, i) => {
+      const yy = y(v);
+      s += `<rect x="${(xc(i)-bw/2).toFixed(1)}" y="${Math.min(yy,y0).toFixed(1)}" `
+         + `width="${bw.toFixed(1)}" height="${Math.max(1,Math.abs(y0-yy)).toFixed(1)}" `
+         + `fill="${cfg.bars.c}" opacity="0.8" rx="1"/>`;
+    });
+  }
+  for (const l of lines){
+    const d = l.v.map((v,i) => `${i?'L':'M'}${xc(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
+    s += `<path d="${d}" fill="none" stroke="${l.c}" stroke-width="1.8"/>`;
+  }
+  for (let i = 0; i < n; i++){
+    const parts = [];
+    if (cfg.bars) parts.push(`${cfg.bars.n} ${cfg.bars.v[i]}`);
+    lines.forEach(l => { if (l.v[i] !== undefined) parts.push(`${l.n} ${l.v[i]}`); });
+    const t     = (cfg.times && cfg.times[i]) || '';
+    const rows  = parts.join('¦');
+    const extra = (cfg.tip2 && cfg.tip2[i]) || '';
+    s += `<rect x="${(xc(i)-step/2).toFixed(1)}" y="0" width="${step.toFixed(1)}" height="${h}" `
+       + `fill="transparent" style="cursor:crosshair" `
+       + `onmousemove="dbgTip(event,'${t}','${rows}','${extra}')" onmouseleave="dbgTipHide()"/>`;
+  }
+  s += '</svg>';
+  const leg = (cfg.bars ? [cfg.bars] : []).concat(lines)
+    .map(x => `<span style="color:${x.c};font-size:11px;margin-right:12px">&#9632; ${x.n}</span>`).join('');
+  return s + `<div style="margin-top:2px">${leg}</div>`;
+}
+
+function loadDebug() {
+  const err = document.getElementById('dbg-error');
+  err.style.display = 'none';
+  let d;
+  try { d = JSON.parse(document.getElementById('dbg-input').value.trim()); }
+  catch(e) { err.textContent = 'Ogiltig JSON.'; err.style.display='block'; return; }
+
+  const el = document.getElementById('dbg-content');
+  let h = '';
+
+  // --- Nyckeltal
+  h += '<div class="dbg-grid">';
+  if (d.ms !== undefined)  h += stat('Exekvering', d.ms, 'ms');
+  if (d.currentQuarter !== undefined) {
+    const q = d.currentQuarter;
+    h += stat('Kvartal', `${String(Math.floor(q/4)).padStart(2,'0')}:${String((q%4)*15).padStart(2,'0')}`, '');
+  }
+  if (d.T !== undefined) h += stat('Horisont', d.T, 'kvartar');
+  if (d.S !== undefined) h += stat('Tillstånd', d.S, '');
+  if (d.termPrice !== undefined) h += stat('Terminalpris', d.termPrice.toFixed(2), 'kr');
+  if (d.tomorrowSol !== undefined) h += stat('Sol imorgon', d.tomorrowSol.toFixed(1), 'kWh');
+  if (d.socMin !== undefined) h += stat('SoC min', d.socMin, '%');
+  if (d.socMax !== undefined) h += stat('SoC max', d.socMax, '%');
+  h += '</div>';
+
+  // --- Status
+  const chips = [];
+  if (d.ev) {
+    chips.push(chip('EV', d.ev.mode));
+    if (d.ev.kW)      chips.push(chip('effekt', d.ev.kW + ' kW'));
+    if (d.ev.kvar)    chips.push(chip('kvar', d.ev.kvar + ' kWh'));
+    if (d.ev.kvartar) chips.push(chip('kvartar', d.ev.kvartar));
+    if (d.ev.solAktiv) chips.push(chip('solladdar', 'ja'));
+    if (d.ev.manAktiv) chips.push(chip('manuell laddning', 'ja'));
+  }
+  if (d.prop) {
+    chips.push(chip('andel', d.prop.andel));
+    chips.push(chip('överskott', d.prop.overskott + ' kWh'));
+    if (d.prop.dagStart >= 0) {
+      const cq = d.currentQuarter || 0;
+      const lbl = i => ((cq + i) >= 96 ? 'imorgon ' : '') + qTime(cq + i);
+      chips.push(chip('dagsljus', lbl(d.prop.dagStart) + ' – ' + lbl(d.prop.dagSlut)));
+    } else {
+      chips.push(chip('dagsljus', 'inget i horisonten'));
+    }
+  }
+  if (d.indoorTemp !== undefined)   chips.push(chip('inne', d.indoorTemp + '°'));
+  if (d.outdoorTemp0 !== undefined) chips.push(chip('ute', d.outdoorTemp0 + '°'));
+  if (d.dehumNow !== undefined)     chips.push(chip('avfuktare', d.dehumNow + ' / ' + d.dehumAvg));
+  if (d.load_hp_q0 !== undefined) chips.push(chip('värmepump', d.load_hp_q0 + ' kW'));
+  if (chips.length) h += `<div class="dbg-h">Status</div><div class="chips">${chips.join('')}</div>`;
+
+  if (d.ekonomi) {
+    const e = d.ekonomi;
+    const kr = v => (v >= 0 ? '' : '−') + Math.abs(v).toFixed(2).replace('.', ',');
+    const sign = v => v >= 0 ? 'var(--self)' : 'var(--now)';
+    h += '<div class="dbg-h">Ekonomi över horisonten</div><div class="dbg-grid">';
+    h += `<div class="dbg-stat"><div class="k">Vinst mot utan batteri</div>`
+       + `<div class="v" style="color:${sign(e.vinstMotUtan)}">${kr(e.vinstMotUtan)}<span class="u">kr</span></div></div>`;
+    h += `<div class="dbg-stat"><div class="k">Vinst mot bara Self</div>`
+       + `<div class="v" style="color:${sign(e.vinstMotSelf)}">${kr(e.vinstMotSelf)}<span class="u">kr</span></div></div>`;
+    h += stat('DP nettokostnad', kr(e.dpKostnad), 'kr');
+    h += stat('Utan batteri', kr(e.utanKostnad), 'kr');
+    h += stat('Slut-SoC DP', e.dpSlutSoc, '%');
+    h += stat('Slut-SoC Self', e.selfSlutSoc, '%');
+    h += '</div>';
+    h += '<div style="font-size:11px;color:var(--muted);margin:-8px 0 10px">'
+       + 'Vinsten räknar in batteriets nivå vid horisontens slut, värderad till terminalpriset. '
+       + 'Negativ kostnad betyder nettointäkt.</div>';
+    if (Array.isArray(e.dagar) && e.dagar.length) {
+      h += '<div class="scroll"><table class="dbg"><tr><th>Dygn</th><th>Köpt</th><th>Sålt</th><th>Slitage</th><th>Netto</th></tr>';
+      h += e.dagar.map(x => {
+        const net = x.kop - x.salj + x.slit;
+        const lbl = ['idag (resten)','imorgon','övermorgon (prognos)'][x.dag] || ('dag ' + x.dag);
+        return `<tr><td>${lbl}</td><td>${kr(x.kop)} kr</td><td>${kr(x.salj)} kr</td>`
+             + `<td>${kr(x.slit)} kr</td><td>${kr(net)} kr</td></tr>`;
+      }).join('');
+      h += '</table></div>';
+    }
+  }
+
+  if (d.matt) {
+    const m = d.matt, mc = [];
+    mc.push(chip('baslast nu', m.baslastNu + ' kW'));
+    mc.push(chip('baslast obs', m.baslastObs));
+    mc.push(chip('varmvatten/dygn', m.vvDygn + ' kWh'));
+    mc.push(chip('vv i fönster', m.vvIFonster + ' kW'));
+    mc.push(chip('fönstertimmar', m.fonsterTimmar));
+    mc.push(chip('vv obs', m.vvObs));
+    h += `<div class="dbg-h">Mätvärdesmodeller</div><div class="chips">${mc.join('')}</div>`;
+  }
+
+  if (d.sol) {
+    const s = d.sol, sc = [];
+    const pct = f => (f < 1 ? '−' : '+') + Math.abs((1 - f) * 100).toFixed(0) + ' %';
+    sc.push(chip('faktor idag', s.faktorIdag + ' (' + pct(s.faktorIdag) + ')'));
+    sc.push(chip('faktor lång', s.faktorLang + ' (' + pct(s.faktorLang) + ')'));
+    sc.push(chip('idag verklig', s.idagVerklig + ' kWh'));
+    sc.push(chip('idag prognos', s.idagPrognos + ' kWh'));
+    h += `<div class="dbg-h">Solkalibrering</div><div class="chips">${sc.join('')}</div>`;
+  }
+
+  // --- Kurvor: effekt och pris
+  // Nya debugen har hela horisonten; aldre har bara de forsta 20 kvartarna
+  const sol   = d.solar || d.solar_q0_20;
+  const lastS = d.load  || d.load_q0_20;
+  const impS  = d.imp   || d.imp_q0_20;
+  const expS  = d.exp   || d.exp_q0_20;
+  const span  = n => {
+    const cq = d.currentQuarter || 0;
+    return n <= 20 ? 'närmaste ' + (n / 4).toFixed(0) + ' timmarna'
+                   : qTime(cq) + ' – ' + qTime(cq + n - 1);
+  };
+
+  if (sol && lastS) {
+    const tms = sol.map((_,i) => qTime((d.currentQuarter||0)+i));
+    h += `<div class="dbg-h">Effekt, ${span(sol.length)} (kW)</div>`;
+    h += chartHover({ lines:[
+      { n:'sol',  v:sol,   c:'var(--discharge)' },
+      { n:'last', v:lastS, c:'var(--charge)'    },
+    ], times:tms, w:640, h:110 });
+  }
+  if (impS && expS) {
+    const tmp = impS.map((_,i) => qTime((d.currentQuarter||0)+i));
+    h += `<div class="dbg-h">Pris, ${span(impS.length)} (kr/kWh)</div>`;
+    h += chartHover({
+      bars: { n:'import', v:impS, c:'var(--charge)' },
+      lines:[{ n:'export', v:expS, c:'var(--self)' }],
+      times: tmp, w:640, h:140 });
+  }
+
+  // --- SoC-kurva
+  if (Array.isArray(d.socCurve) && d.socCurve.length) {
+    const rows = d.socCurve.map(s => {
+      const m = String(s).match(/^(\d+):(\d+)\s+([A-Za-z]+)([\d.]+)?\s+(\d+)%$/);
+      if (!m) return null;
+      return { day:+m[1], hour:m[2], mode:m[3], pw:m[4]||'', soc:+m[5] };
+    }).filter(Boolean);
+    if (rows.length) {
+      h += '<div class="dbg-h">SoC-bana (per timme)</div>';
+      h += chartHover({
+        lines:[{ n:'SoC %', v:rows.map(r=>r.soc), c:'var(--charge)' }],
+        times: rows.map(r => (['idag ','imorgon ','övermorgon '][r.day] || '') + r.hour + ':00'),
+        tip2:  rows.map(r => r.mode + (r.pw ? ' ' + r.pw + ' kW' : '')),
+        min:0, max:100, w:640, h:120 });
+      h += '<div class="scroll"><table class="dbg"><tr><th>Tid</th><th>Läge</th><th>SoC</th></tr>';
+      h += rows.map(r =>
+        `<tr><td>${['idag','imorgon','övermorgon'][r.day]||('dag '+r.day)} ${r.hour}:00</td>
+             <td>${modeBadge(r.mode, r.pw)}</td><td>${r.soc}%</td></tr>`).join('');
+      h += '</table></div>';
+    }
+  }
+
+  // --- Dagsdetalj
+  if (Array.isArray(d.dayDetail) && d.dayDetail.length) {
+    const rows = d.dayDetail.map(s => {
+      const m = String(s).match(/^(\S+)\s+([A-Za-z]+)([\d.]+)?\s+sol([\d.-]+)\s+last([\d.-]+)\s+net([\d.-]+)$/);
+      if (!m) return null;
+      return { t:m[1], mode:m[2].trim(), pw:m[3]||'', sol:+m[4], last:+m[5], net:+m[6] };
+    }).filter(Boolean);
+    if (rows.length) {
+      const maxNet = Math.max(...rows.map(r => Math.abs(r.net)), 0.1);
+      h += '<div class="dbg-h">Soltimmar</div><div class="scroll">';
+      h += '<table class="dbg"><tr><th>Tid</th><th>Läge</th><th>Sol</th><th>Last</th><th>Netto</th></tr>';
+      h += rows.map(r => {
+        const w = Math.abs(r.net) / maxNet * 110;
+        const col = r.net >= 0 ? 'var(--self)' : 'var(--now)';
+        return `<tr><td>${r.t}</td><td>${modeBadge(r.mode, r.pw)}</td>
+                <td>${r.sol.toFixed(1)}</td><td>${r.last.toFixed(2)}</td>
+                <td class="dbg-barcell"><div class="dbg-bar" style="width:${w}px;background:${col}"></div>
+                <span>${r.net.toFixed(2)}</span></td></tr>`;
+      }).join('');
+      h += '</table></div>';
+    }
+  }
+
+  // --- Slutet av horisonten
+  const dd = d.dp_at_t0 || {};
+  if (dd.impTail) {
+    h += '<div class="dbg-h">Sista två timmarna i horisonten</div>';
+    const tt0 = (d.currentQuarter||0) + (d.T||0) - dd.impTail.length;
+    h += chartHover({
+      bars: { n:'import', v:dd.impTail, c:'var(--charge)' },
+      lines:[{ n:'export', v:dd.expTail || [], c:'var(--self)' }],
+      times: dd.impTail.map((_,i) => qTime(tt0 + i)), w:640, h:100 });
+  }
+
+  // --- Nuläge
+  const te = d.testEval;
+  if (te) {
+    h += '<div class="dbg-h">Nuläget, kvartal 0</div><div class="chips">';
+    h += chip('SoC', te.from_soc + '%');
+    h += chip('Self', te.self_cost + ' kr');
+    h += chip('Stop', te.stop_cost + ' kr');
+    h += chip('import', te.imp0 + ' kr');
+    h += chip('last', te.load0 + ' kW');
+    h += chip('sol', te.solar0 + ' kW');
+    if (dd.policy_t0)   h += chip('DP väljer', dd.policy_t0);
+    if (dd.currentMode) h += chip('nuvarande', dd.currentMode);
+    h += '</div>';
+  }
+
+  el.innerHTML = h;
+  el.style.display = 'block';
+}
+</script>
+
+
+<style>
+  #exec-section{margin-top:44px;padding-top:24px;border-top:1px solid var(--border)}
+  #exec-section h1{font-size:18px;font-weight:600;margin:0 0 16px;color:#e8f0ff;
+    font-family:'Inter',sans-serif;letter-spacing:-.3px}
+  .ex-strip{display:flex;gap:2px;height:22px;margin:4px 0 2px}
+  .ex-cell{flex:1;border-radius:2px;cursor:crosshair;min-width:4px}
+  .ex-diff td{background:rgba(245,158,11,.10)}
+  #ex-error{color:var(--discharge);font-size:13px;margin-top:8px;display:none}
+  #ex-content{display:none}
+</style>
+
+<div id="exec-section">
+  <h1>DP_Exec_Log</h1>
+  <textarea id="ex-input" placeholder="Klistra in DP_Exec_Log här..."></textarea>
+  <br>
+  <button onclick="loadExec()">Visa logg</button>
+  <div id="ex-error"></div>
+  <div id="ex-content"></div>
+</div>
+
+<script>
+const EX_RE = /^(\d{2}:\d{2}) plan (\w+)(?: ([\d.]+))?( noImp)? -> (\w+)(?: ([\d.]+))? \| PV ([-\d.]+) last ([-\d.]+) batt ([-\d.]+)(?: ev ([-\d.]+))? = ([-\d.]+)(?: \| (.*))?$/;
+
+function loadExec(){
+  const err = document.getElementById('ex-error');
+  err.style.display = 'none';
+  const raw = document.getElementById('ex-input').value;
+
+  // Tal radbrytningar bade som \n och som ihopslagna rader
+  const parts = raw.split(/\n|(?=\d{2}:\d{2} plan )/).map(s => s.trim()).filter(Boolean);
+  const rows = parts.map(s => {
+    const m = s.match(EX_RE);
+    if (!m) return null;
+    return { t:m[1], pMode:m[2], pPow:m[3]||'', noImp:!!m[4], mode:m[5], pow:m[6]||'',
+             pv:+m[7], last:+m[8], batt:+m[9], ev:+(m[10]||0),
+             house: Math.max(0, +m[8] - +(m[10]||0)), sur:+m[11], note:m[12]||'' };
+  }).filter(Boolean).reverse();   // aldst forst
+
+  if (!rows.length){
+    err.textContent = 'Hittade inga loggrader i väntat format.';
+    err.style.display = 'block';
+    return;
+  }
+
+  let h = '';
+
+  // Nyckeltal
+  const changes = rows.filter((r,i) => i && r.mode !== rows[i-1].mode).length;
+  const adjusted = rows.filter(r => r.mode !== r.pMode || r.pow !== r.pPow).length;
+  h += '<div class="dbg-grid">';
+  h += stat('Rader', rows.length, '');
+  h += stat('Period', rows[0].t + '–' + rows[rows.length-1].t, '');
+  h += stat('Lägesbyten', changes, '');
+  h += stat('Justerade', adjusted, '');
+  h += '</div>';
+
+  // Lagesremsa, en cell per korning
+  h += '<div class="dbg-h">Satt läge per körning</div><div class="ex-strip">';
+  h += rows.map(r => {
+    const col = MODE_COL[r.mode] || 'var(--muted)';
+    const a = `plan ${r.pMode}${r.pPow?' '+r.pPow:''}`;
+    const b = `satt ${r.mode}${r.pow?' '+r.pow:''}`;
+    return `<div class="ex-cell" style="background:${col}" `
+         + `onmousemove="dbgTip(event,'${r.t}','${a}¦${b}','')" onmouseleave="dbgTipHide()"></div>`;
+  }).join('');
+  h += '</div><div style="font-size:11px;color:var(--muted)">';
+  h += Object.entries(MODE_COL).map(([k,v]) => `<span style="color:${v};margin-right:12px">&#9632; ${k}</span>`).join('');
+  h += '</div>';
+
+  // Effekter over tid
+  const times = rows.map(r => r.t);
+  h += '<div class="dbg-h">Effekter (kW)</div>';
+  h += chartHover({ lines:[
+    { n:'PV',        v:rows.map(r=>r.pv),    c:'var(--discharge)' },
+    { n:'hus',       v:rows.map(r=>r.house), c:'var(--now)' },
+    { n:'bil',       v:rows.map(r=>r.ev),    c:'var(--muted)' },
+    { n:'batteri',   v:rows.map(r=>r.batt),  c:'var(--charge)' },
+    { n:'överskott', v:rows.map(r=>r.sur),   c:'var(--self)' },
+  ], times, w:640, h:150 });
+
+  // Tabell, nyaste overst
+  h += '<div class="dbg-h">Körningar</div><div class="scroll"><table class="dbg">';
+  h += '<tr><th>Tid</th><th>Plan</th><th>Satt</th><th>PV</th><th>Hus</th><th>Bil</th><th>Batt</th><th>Överskott</th><th>Not</th></tr>';
+  h += rows.slice().reverse().map(r => {
+    const diff = r.mode !== r.pMode || r.pow !== r.pPow;
+    return `<tr class="${diff?'ex-diff':''}"><td>${r.t}</td>
+      <td>${modeBadge(r.pMode, r.pPow)}${r.noImp?' <span style="color:var(--muted);font-size:10px">noImp</span>':''}</td>
+      <td>${modeBadge(r.mode, r.pow)}</td>
+      <td>${r.pv.toFixed(2)}</td><td>${r.house.toFixed(2)}</td><td>${r.ev.toFixed(2)}</td><td>${r.batt.toFixed(2)}</td>
+      <td>${r.sur.toFixed(2)}</td><td style="font-size:11px">${esc(r.note)}</td></tr>`;
+  }).join('');
+  h += '</table></div>';
+
+  const el = document.getElementById('ex-content');
+  el.innerHTML = h;
+  el.style.display = 'block';
+}
+</script>
+
+</body>
+</html>
