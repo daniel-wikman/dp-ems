@@ -44,14 +44,12 @@
   .legend{display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--muted);
           margin-top:6px;padding:0 2px}
   .legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:4px}
-  .tip2{position:absolute;pointer-events:none;background:#0f1620;border:1px solid var(--border);
-       border-radius:7px;padding:7px 9px;font-size:12px;display:none;z-index:5;
-       box-shadow:0 6px 20px rgba(0,0,0,.5);white-space:nowrap;line-height:1.5}
-  .tip2 .tt{font-family:'JetBrains Mono',monospace;font-weight:500;margin-bottom:3px}
-  #tip{position:absolute;pointer-events:none;background:#0f1620;border:1px solid var(--border);
-       border-radius:7px;padding:7px 9px;font-size:12px;display:none;z-index:5;
-       box-shadow:0 6px 20px rgba(0,0,0,.5);white-space:nowrap}
-  #tip .tt{font-family:'JetBrains Mono',monospace;font-weight:500;margin-bottom:2px}
+  /* Avlasningsrad under diagrammet i stallet for en ruta ovanpa det */
+  .readout{font-size:12.5px;font-family:'JetBrains Mono',monospace;color:var(--muted);
+           padding:6px 2px 0;min-height:20px;display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .readout b{color:var(--fg);font-weight:500}
+  .cursor{position:absolute;top:10px;bottom:24px;width:1px;background:var(--now);
+          opacity:.75;pointer-events:none;display:none}
 
   /* Ekonomi */
   .econ{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
@@ -108,7 +106,7 @@
 
   <h2>Planen, hela horisonten</h2>
   <div class="chart" id="chartbox">
-    <div id="tip"></div>
+    <div class="cursor" id="chart-cursor"></div>
     <div id="chart"></div>
     <div class="legend">
       <span><i style="background:var(--self)"></i>Self</span>
@@ -118,6 +116,7 @@
       <span style="color:var(--now)">| nu</span>
     </div>
   </div>
+  <div class="readout" id="chart-readout"></div>
 
   <h2>Ekonomi över horisonten</h2>
   <div class="econ" id="econ"></div>
@@ -217,35 +216,39 @@ function ritaDiagram(){
   s += '</svg>';
   document.getElementById('chart').innerHTML = s;
 
-  const box = document.getElementById('chartbox'), tip = document.getElementById('tip');
+  const box = document.getElementById('chartbox');
+  const cur = document.getElementById('chart-cursor');
+  const out = document.getElementById('chart-readout');
+  const visaIndex = i => {
+    const e = PLAN[i];
+    const dag = ['idag','imorgon','övermorgon'][e.day] || ('dag ' + e.day);
+    out.innerHTML = `<b>${dag} ${qT(e.q)}</b>${badge(e.mode, e.power)}<span>SoC <b>${e.soc} %</b></span>`;
+  };
   const peka = ev => {
     const r = box.getBoundingClientRect();
     const px = (ev.touches ? ev.touches[0].clientX : ev.clientX) - r.left - 10;
     const frac = (px / (r.width - 20) * W - L) / (W - L - R);
     const i = Math.max(0, Math.min(n - 1, Math.floor(frac * n)));
-    const e = PLAN[i];
-    const dag = ['idag','imorgon','övermorgon'][e.day] || ('dag ' + e.day);
-    tip.innerHTML = `<div class="tt">${dag} ${qT(e.q)}</div>${badge(e.mode, e.power)} `
-                  + `<span style="color:var(--muted)">SoC ${e.soc} %</span>`;
-    tip.style.display = 'block';
-    tip.style.left = Math.max(4, Math.min(r.width - tip.offsetWidth - 4, px - tip.offsetWidth / 2)) + 'px';
-    tip.style.top = '6px';
+    visaIndex(i);
+    cur.style.display = 'block';
+    cur.style.left = (px + 10) + 'px';
   };
   box.onmousemove = peka; box.ontouchstart = peka; box.ontouchmove = peka;
-  box.onmouseleave = () => tip.style.display = 'none';
-  box.ontouchend = () => setTimeout(() => tip.style.display = 'none', 1800);
+  box.onmouseleave = () => { cur.style.display = 'none'; visaIndex(0); };
+  visaIndex(0);
 }
 
 // ---------- Ekonomi ----------
 function ritaEkonomi(){
   const e = DBG && DBG.ekonomi;
   if (!e) { document.getElementById('econ').innerHTML = ''; return; }
-  const d0 = (e.dagar || []).find(d => d.dag === 0) || { kop:0, salj:0, slit:0 };
+  const namn = ['Resten av idag','Imorgon','Övermorgon'];
+  const rader = (e.dagar || []).map(d =>
+      `<div class="sub">${namn[d.dag] || ('Dag ' + d.dag)}: köpt <b>${kr(d.kop)}</b> kr, `
+    + `sålt <b>${kr(d.salj)}</b> kr, slitage <b>${kr(d.slit)}</b> kr</div>`).join('');
   document.getElementById('econ').innerHTML =
-    `<div class="kpi stor"><div class="k">Vinst mot utan batteri</div>`
-  + `<div class="v">${kr(e.vinstMotUtan)}<span class="u">kr</span></div>`
-  + `<div class="sub">Resten av idag: köpt <b>${kr(d0.kop)}</b> kr, `
-  + `sålt <b>${kr(d0.salj)}</b> kr, slitage <b>${kr(d0.slit)}</b> kr</div></div>`;
+    `<div class="kpi stor"><div class="k">Vinst mot utan batteri, hela horisonten</div>`
+  + `<div class="v">${kr(e.vinstMotUtan)}<span class="u">kr</span></div>${rader}</div>`;
   document.getElementById('econnote').textContent =
     'Vinsten avser hela horisonten och räknar in batteriets nivå vid slutet. '
   + 'Ett enskilt dygn går inte att räkna för sig, eftersom batteriet flyttar värde mellan dygnen.';
@@ -309,25 +312,29 @@ function ritaChart(elId, cfg){
   const leg = (cfg.bars?[cfg.bars]:[]).concat(lines)
     .map(x => `<span><i style="background:${x.c}"></i>${x.n}</span>`).join('');
   const el = document.getElementById(elId);
-  el.innerHTML = `<div class="chart" style="margin:0"><div class="tip2"></div>${s}</div>`
-               + `<div class="legend">${leg}</div>`;
+  el.innerHTML = `<div class="chart" style="margin:0"><div class="cursor"></div>${s}</div>`
+               + `<div class="legend">${leg}</div><div class="readout"></div>`;
 
-  const box = el.querySelector('.chart'), tip = el.querySelector('.tip2');
+  const box = el.querySelector('.chart');
+  const cur = el.querySelector('.cursor');
+  const out = el.querySelector('.readout');
   const serier = (cfg.bars?[cfg.bars]:[]).concat(lines);
+  const visaIndex = i => {
+    out.innerHTML = `<b>${(cfg.times2&&cfg.times2[i])||''}</b>`
+      + serier.map(se => `<span><i style="background:${se.c};display:inline-block;width:8px;`
+        + `height:8px;border-radius:2px;margin-right:4px"></i>${se.n} <b>${(+se.v[i]).toFixed(2)}</b></span>`).join('');
+  };
   const peka = ev => {
     const r = box.getBoundingClientRect();
     const px = (ev.touches?ev.touches[0].clientX:ev.clientX) - r.left - 10;
     const frac = (px/(r.width-20)*W - L)/(W-L-R);
     const i = Math.max(0, Math.min(n-1, Math.floor(frac*n)));
-    tip.innerHTML = `<div class="tt">${(cfg.times2&&cfg.times2[i])||''}</div>`
-      + serier.map(se => `<span style="color:${se.c}">■</span> ${se.n} ${(+se.v[i]).toFixed(2)}`).join('<br>');
-    tip.style.display='block';
-    tip.style.left = Math.max(4, Math.min(r.width-tip.offsetWidth-4, px-tip.offsetWidth/2))+'px';
-    tip.style.top='6px';
+    visaIndex(i);
+    cur.style.display='block'; cur.style.left=(px+10)+'px';
   };
   box.onmousemove=peka; box.ontouchstart=peka; box.ontouchmove=peka;
-  box.onmouseleave=()=>tip.style.display='none';
-  box.ontouchend=()=>setTimeout(()=>tip.style.display='none',1800);
+  box.onmouseleave=()=>{ cur.style.display='none'; visaIndex(0); };
+  visaIndex(0);
 }
 
 function miniChart(serier, times, hojd){
