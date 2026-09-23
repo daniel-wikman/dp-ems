@@ -32,6 +32,7 @@
   .kpi .u{font-size:11px;color:var(--muted);margin-left:2px}
   .kpi .sub{font-size:11.5px;color:var(--muted);margin-top:5px;font-family:'Inter',sans-serif}
   .kpi .sub b{color:var(--fg);font-weight:500;font-family:'JetBrains Mono',monospace}
+  .kpi .sub.total{border-top:1px solid var(--border);margin-top:7px;padding-top:6px;color:var(--fg)}
   .econ .kpi{grid-column:1/-1}
   .kpi.stor .v{font-size:26px}
   .next{margin-top:8px;font-size:13px;color:var(--muted)}
@@ -243,9 +244,14 @@ function ritaEkonomi(){
   const e = DBG && DBG.ekonomi;
   if (!e) { document.getElementById('econ').innerHTML = ''; return; }
   const namn = ['Resten av idag','Imorgon','Övermorgon'];
-  const rader = (e.dagar || []).map(d =>
-      `<div class="sub">${namn[d.dag] || ('Dag ' + d.dag)}: köpt <b>${kr(d.kop)}</b> kr, `
-    + `sålt <b>${kr(d.salj)}</b> kr, slitage <b>${kr(d.slit)}</b> kr</div>`).join('');
+  const dagar = e.dagar || [];
+  const sum = f => dagar.reduce((a, d) => a + (d[f] || 0), 0);
+  const rad = (etikett, kop, salj, slit, klass) =>
+      `<div class="sub${klass || ''}">${etikett}: köpt <b>${kr(kop)}</b> kr, `
+    + `sålt <b>${kr(salj)}</b> kr, slitage <b>${kr(slit)}</b> kr</div>`;
+
+  const rader = dagar.map(d => rad(namn[d.dag] || ('Dag ' + d.dag), d.kop, d.salj, d.slit)).join('')
+    + (dagar.length > 1 ? rad('Totalt', sum('kop'), sum('salj'), sum('slit'), ' total') : '');
   document.getElementById('econ').innerHTML =
     `<div class="kpi stor"><div class="k">Vinst mot utan batteri, hela horisonten</div>`
   + `<div class="v">${kr(e.vinstMotUtan)}<span class="u">kr</span></div>${rader}</div>`;
