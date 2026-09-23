@@ -30,6 +30,10 @@
   .kpi .v{font-family:'JetBrains Mono',monospace;font-size:19px;font-weight:500;margin-top:3px;
           white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .kpi .u{font-size:11px;color:var(--muted);margin-left:2px}
+  .kpi .sub{font-size:11.5px;color:var(--muted);margin-top:5px;font-family:'Inter',sans-serif}
+  .kpi .sub b{color:var(--fg);font-weight:500;font-family:'JetBrains Mono',monospace}
+  .econ .kpi{grid-column:1/-1}
+  .kpi.stor .v{font-size:26px}
   .next{margin-top:8px;font-size:13px;color:var(--muted)}
   .next b{color:var(--fg);font-weight:500}
 
@@ -40,6 +44,10 @@
   .legend{display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--muted);
           margin-top:6px;padding:0 2px}
   .legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:4px}
+  .tip2{position:absolute;pointer-events:none;background:#0f1620;border:1px solid var(--border);
+       border-radius:7px;padding:7px 9px;font-size:12px;display:none;z-index:5;
+       box-shadow:0 6px 20px rgba(0,0,0,.5);white-space:nowrap;line-height:1.5}
+  .tip2 .tt{font-family:'JetBrains Mono',monospace;font-weight:500;margin-bottom:3px}
   #tip{position:absolute;pointer-events:none;background:#0f1620;border:1px solid var(--border);
        border-radius:7px;padding:7px 9px;font-size:12px;display:none;z-index:5;
        box-shadow:0 6px 20px rgba(0,0,0,.5);white-space:nowrap}
@@ -53,6 +61,10 @@
           margin-top:8px;overflow:hidden}
   details>summary{cursor:pointer;padding:11px 13px;font-size:14px;list-style:none;
                   display:flex;justify-content:space-between;align-items:center;gap:10px}
+  /* Timraderna: fasta kolumner sa tid, lagen och SoC star i linje */
+  .timrad>summary{display:grid;grid-template-columns:auto 1fr auto auto;gap:9px;align-items:center}
+  .timrad>summary .tid{font-family:'JetBrains Mono',monospace;color:var(--muted);font-size:13px}
+  .timrad>summary .soc{font-family:'JetBrains Mono',monospace;font-size:13px;text-align:right}
   details>summary::-webkit-details-marker{display:none}
   details>summary::after{content:'+';color:var(--muted);font-family:'JetBrains Mono',monospace}
   details[open]>summary::after{content:'−'}
@@ -228,13 +240,15 @@ function ritaDiagram(){
 function ritaEkonomi(){
   const e = DBG && DBG.ekonomi;
   if (!e) { document.getElementById('econ').innerHTML = ''; return; }
-  const d0 = (e.dagar || []).find(d => d.dag === 0) || { kop:0, salj:0 };
+  const d0 = (e.dagar || []).find(d => d.dag === 0) || { kop:0, salj:0, slit:0 };
   document.getElementById('econ').innerHTML =
-      kort('Vinst mot utan batteri', kr(e.vinstMotUtan), 'kr')
-    + kort('Köpt idag', kr(d0.kop), 'kr')
-    + kort('Sålt idag', kr(d0.salj), 'kr');
+    `<div class="kpi stor"><div class="k">Vinst mot utan batteri</div>`
+  + `<div class="v">${kr(e.vinstMotUtan)}<span class="u">kr</span></div>`
+  + `<div class="sub">Resten av idag: köpt <b>${kr(d0.kop)}</b> kr, `
+  + `sålt <b>${kr(d0.salj)}</b> kr, slitage <b>${kr(d0.slit)}</b> kr</div></div>`;
   document.getElementById('econnote').textContent =
-    'Vinsten räknar in batteriets nivå vid horisontens slut. Köpt och sålt avser resten av dygnet.';
+    'Vinsten avser hela horisonten och räknar in batteriets nivå vid slutet. '
+  + 'Ett enskilt dygn går inte att räkna för sig, eftersom batteriet flyttar värde mellan dygnen.';
 }
 
 // ---------- Timme för timme ----------
@@ -251,8 +265,8 @@ function ritaTimmar(){
     const lagen = [...new Set(g.poster.map(p => p.mode))];
     const etikett = lagen.map(m => badge(m)).join(' ');
     const dag = g.day ? (['','imorgon','övermorgon'][g.day] || 'dag '+g.day) + ' ' : '';
-    return `<details><summary><span>${dag}${String(g.h).padStart(2,'0')}:00 &nbsp; ${etikett}</span>`
-         + `<span style="color:var(--muted);font-family:'JetBrains Mono',monospace">${sista.soc} %</span></summary>`
+    return `<details class="timrad"><summary><span class="tid">${dag}${String(g.h).padStart(2,'0')}:00</span>`
+         + `<span>${etikett}</span><span class="soc">${sista.soc} %</span></summary>`
          + `<table class="rows">` + g.poster.map(p =>
              `<tr><td class="t">${qT(p.q)}</td><td>${badge(p.mode, p.power)}</td>`
            + `<td class="s">${p.soc} %</td></tr>`).join('') + `</table></details>`;
@@ -260,6 +274,62 @@ function ritaTimmar(){
 }
 
 // ---------- Priser och effekter ----------
+// Ritar i en behallare med egen tooltip. bars ritas som staplar, lines som linjer.
+function ritaChart(elId, cfg){
+  const W=720, H=cfg.hojd||130, L=30, R=6, T=8, B=18;
+  const lines = cfg.lines||[];
+  const alla = [].concat(cfg.bars?cfg.bars.v:[], ...lines.map(l=>l.v));
+  const lo = Math.min(0, ...alla), hi = Math.max(...alla, .001);
+  const n = Math.max(cfg.bars?cfg.bars.v.length:0, ...lines.map(l=>l.v.length));
+  const step = (W-L-R)/n;
+  const xc = i => L + step*(i+.5);
+  const y  = v => T + (H-T-B)*(1-(v-lo)/((hi-lo)||1));
+
+  let s = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="width:100%;height:${H}px">`;
+  s += `<text x="0" y="${y(hi)+4}" fill="var(--muted)" font-size="10">${hi.toFixed(1)}</text>`;
+  s += `<text x="0" y="${y(lo)+4}" fill="var(--muted)" font-size="10">${lo.toFixed(1)}</text>`;
+  s += `<line x1="${L}" y1="${y(Math.max(lo,0))}" x2="${W-R}" y2="${y(Math.max(lo,0))}" stroke="var(--border)"/>`;
+  if (cfg.bars){
+    const bw = Math.max(.8, step*.8), y0 = y(Math.max(lo,0));
+    cfg.bars.v.forEach((v,i) => {
+      const yy = y(v);
+      s += `<rect x="${(xc(i)-bw/2).toFixed(2)}" y="${Math.min(yy,y0).toFixed(1)}" `
+         + `width="${bw.toFixed(2)}" height="${Math.max(.8,Math.abs(y0-yy)).toFixed(1)}" `
+         + `fill="${cfg.bars.c}" opacity=".85"/>`;
+    });
+  }
+  lines.forEach(se => {
+    const d = se.v.map((v,i)=>`${i?'L':'M'}${xc(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
+    s += `<path d="${d}" fill="none" stroke="${se.c}" stroke-width="1.8"/>`;
+  });
+  (cfg.times||[]).forEach((t,i) => { if (t)
+    s += `<text x="${xc(i).toFixed(1)}" y="${H-4}" fill="var(--muted)" font-size="10" text-anchor="middle">${t}</text>`; });
+  s += '</svg>';
+
+  const leg = (cfg.bars?[cfg.bars]:[]).concat(lines)
+    .map(x => `<span><i style="background:${x.c}"></i>${x.n}</span>`).join('');
+  const el = document.getElementById(elId);
+  el.innerHTML = `<div class="chart" style="margin:0"><div class="tip2"></div>${s}</div>`
+               + `<div class="legend">${leg}</div>`;
+
+  const box = el.querySelector('.chart'), tip = el.querySelector('.tip2');
+  const serier = (cfg.bars?[cfg.bars]:[]).concat(lines);
+  const peka = ev => {
+    const r = box.getBoundingClientRect();
+    const px = (ev.touches?ev.touches[0].clientX:ev.clientX) - r.left - 10;
+    const frac = (px/(r.width-20)*W - L)/(W-L-R);
+    const i = Math.max(0, Math.min(n-1, Math.floor(frac*n)));
+    tip.innerHTML = `<div class="tt">${(cfg.times2&&cfg.times2[i])||''}</div>`
+      + serier.map(se => `<span style="color:${se.c}">■</span> ${se.n} ${(+se.v[i]).toFixed(2)}`).join('<br>');
+    tip.style.display='block';
+    tip.style.left = Math.max(4, Math.min(r.width-tip.offsetWidth-4, px-tip.offsetWidth/2))+'px';
+    tip.style.top='6px';
+  };
+  box.onmousemove=peka; box.ontouchstart=peka; box.ontouchmove=peka;
+  box.onmouseleave=()=>tip.style.display='none';
+  box.ontouchend=()=>setTimeout(()=>tip.style.display='none',1800);
+}
+
 function miniChart(serier, times, hojd){
   const W = 720, H = hojd || 120, L = 30, R = 6, T = 8, B = 18;
   const alla = serier.flatMap(s => s.v);
@@ -282,15 +352,26 @@ function miniChart(serier, times, hojd){
 }
 
 function ritaPriser(){
-  if (!DBG || !DBG.imp) { document.getElementById('priser').innerHTML = '<div class="note">Ingen debugdata.</div>'; return; }
+  const el = document.getElementById('priser');
+  if (!DBG || !DBG.imp) { el.innerHTML = '<div class="note">Ingen debugdata.</div>'; return; }
   const cq = DBG.currentQuarter || 0;
-  const tid = DBG.imp.map((_,i) => ((cq+i) % 12 === 0) ? qT(cq+i) : '');
-  let h = '<div class="note">Pris, kr/kWh</div>'
-        + miniChart([{n:'import',v:DBG.imp,c:'var(--charge)'},{n:'export',v:DBG.exp,c:'var(--self)'}], tid, 120);
+  const tid  = DBG.imp.map((_,i) => ((cq+i) % 12 === 0) ? qT(cq+i) : '');
+  const tid2 = DBG.imp.map((_,i) => qT(cq+i));
+
+  el.innerHTML = '<div class="note">Pris, kr/kWh</div><div id="ch-pris"></div>'
+    + (DBG.solar && DBG.load ? '<div class="note" style="margin-top:14px">Effekt, kW</div><div id="ch-eff"></div>' : '');
+
+  ritaChart('ch-pris', {
+    bars:  { n:'import', v:DBG.imp, c:'var(--charge)' },
+    lines: [{ n:'export', v:DBG.exp, c:'var(--self)' }],
+    times: tid, times2: tid2, hojd: 130,
+  });
   if (DBG.solar && DBG.load)
-    h += '<div class="note" style="margin-top:14px">Effekt, kW</div>'
-       + miniChart([{n:'sol',v:DBG.solar,c:'var(--discharge)'},{n:'last',v:DBG.load,c:'var(--charge)'}], tid, 120);
-  document.getElementById('priser').innerHTML = h;
+    ritaChart('ch-eff', {
+      lines: [{ n:'sol', v:DBG.solar, c:'var(--discharge)' },
+              { n:'last', v:DBG.load, c:'var(--charge)' }],
+      times: tid, times2: tid2, hojd: 120,
+    });
 }
 
 // ---------- Modeller ----------
