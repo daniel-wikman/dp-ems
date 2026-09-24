@@ -377,19 +377,21 @@ function ritaPriser(){
   const tid2 = DBG.imp.map((_,i) => qT(cq+i));
 
   el.innerHTML = '<div class="note">Pris, kr/kWh</div><div id="ch-pris"></div>'
-    + (DBG.solar && DBG.load ? '<div class="note" style="margin-top:14px">Effekt, kW</div><div id="ch-eff"></div>' : '');
+    + (DBG.solar && DBG.load
+        ? '<div class="note" style="margin-top:14px">Effekt, kW. Bilens laddning syns som hopp i lastkurvan.</div>'
+          + '<div id="ch-eff"></div>' : '');
 
   ritaChart('ch-pris', {
     bars:  { n:'import', v:DBG.imp, c:'var(--charge)' },
     lines: [{ n:'export', v:DBG.exp, c:'var(--self)' }],
     times: tid, times2: tid2, hojd: 130,
   });
-  if (DBG.solar && DBG.load)
-    ritaChart('ch-eff', {
-      lines: [{ n:'sol', v:DBG.solar, c:'var(--discharge)' },
-              { n:'last', v:DBG.load, c:'var(--charge)' }],
-      times: tid, times2: tid2, hojd: 120,
-    });
+  if (DBG.solar && DBG.load) {
+    const lin = [{ n:'sol', v:DBG.solar, c:'var(--discharge)' },
+                 { n:'last (hus + bil)', v:DBG.load, c:'var(--charge)' }];
+    if (DBG.surp) lin.push({ n:'överskott', v:DBG.surp, c:'var(--self)' });
+    ritaChart('ch-eff', { lines: lin, times: tid, times2: tid2, hojd: 130 });
+  }
 }
 
 // ---------- Modeller ----------
