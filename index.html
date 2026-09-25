@@ -223,7 +223,11 @@ function ritaDiagram(){
   const visaIndex = i => {
     const e = PLAN[i];
     const dag = ['idag','imorgon','övermorgon'][e.day] || ('dag ' + e.day);
-    out.innerHTML = `<b>${dag} ${qT(e.q)}</b>${badge(e.mode, e.power)}<span>SoC <b>${e.soc} %</b></span>`;
+    const imp = e.noImp === true ? 'utan nätköp'
+              : e.noImp === false ? 'med nätköp' : '';
+    out.innerHTML = `<b>${dag} ${qT(e.q)}</b>${badge(e.mode, e.power)}`
+      + `<span>SoC <b>${e.soc} %</b></span>`
+      + (imp ? `<span style="color:${e.noImp ? 'var(--self)' : 'var(--now)'}">${imp}</span>` : '');
   };
   const peka = ev => {
     const r = box.getBoundingClientRect();
@@ -256,9 +260,14 @@ function ritaEkonomi(){
 
   const rader = dagar.map(d => rad(namn[d.dag] || ('Dag ' + d.dag), d.kop, d.salj, d.slit)).join('')
     + (dagar.length > 1 ? rad('Totalt', sum('kop'), sum('salj'), sum('slit'), ' total') : '');
+  const jam = `<div class="sub total">Nettokostnad för perioden: <b>${kr(e.dpKostnad)}</b> kr. `
+    + `Utan batteri <b>${kr(e.utanKostnad)}</b> kr, med bara självförbrukning <b>${kr(e.selfKostnad)}</b> kr `
+    + `(vinst mot den: <b>${kr(e.vinstMotSelf)}</b> kr). `
+    + `Batteriet slutar på <b>${e.dpSlutSoc} %</b>.</div>`;
+
   document.getElementById('econ').innerHTML =
     `<div class="kpi stor"><div class="k">Vinst mot utan batteri, hela horisonten</div>`
-  + `<div class="v">${kr(e.vinstMotUtan)}<span class="u">kr</span></div>${rader}</div>`;
+  + `<div class="v">${kr(e.vinstMotUtan)}<span class="u">kr</span></div>${rader}${jam}</div>`;
   document.getElementById('econnote').textContent =
     'Netto är köpt minus sålt plus slitage: positivt är en kostnad, negativt en nettointäkt. '
   + 'Vinsten avser hela horisonten och räknar in batteriets nivå vid slutet. Ett enskilt dygn '
@@ -283,6 +292,7 @@ function ritaTimmar(){
          + `<span>${etikett}</span><span class="soc">${sista.soc} %</span></summary>`
          + `<table class="rows">` + g.poster.map(p =>
              `<tr><td class="t">${qT(p.q)}</td><td>${badge(p.mode, p.power)}</td>`
+           + `<td style="color:var(--now);font-size:11px">${p.noImp === false ? 'nätköp' : ''}</td>`
            + `<td class="s">${p.soc} %</td></tr>`).join('') + `</table></details>`;
   }).join('');
 }
