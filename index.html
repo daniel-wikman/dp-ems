@@ -264,18 +264,23 @@ function ritaEkonomi(){
 
   const rader = dagar.map(d => rad(namn[d.dag] || ('Dag ' + d.dag), d.kop, d.salj, d.slit)).join('')
     + (dagar.length > 1 ? rad('Totalt', sum('kop'), sum('salj'), sum('slit'), ' total') : '');
-  const jam = `<div class="sub total">Nettokostnad för perioden: <b>${kr(e.dpKostnad)}</b> kr. `
-    + `Utan batteri <b>${kr(e.utanKostnad)}</b> kr, med bara självförbrukning <b>${kr(e.selfKostnad)}</b> kr `
-    + `(vinst mot den: <b>${kr(e.vinstMotSelf)}</b> kr). `
-    + `Batteriet slutar på <b>${e.dpSlutSoc} %</b>.</div>`;
+  // Bara jamforbara tal. De ra kostnaderna for alternativen utelamnas:
+  // de tre slutar med olika mycket energi i batteriet, sa den som kostar
+  // minst i kronor kan ha sparat minst. Vinstsiffrorna raknar in slutnivan.
+  const jam = `<div class="sub total">Planens elräkning för perioden: <b>${kr(e.dpKostnad)}</b> kr, `
+    + `alltså köpt minus sålt plus slitage.</div>`
+    + `<div class="sub">Sparat mot att inte ha batteri: <b>${kr(e.vinstMotUtan)}</b> kr. `
+    + `Sparat mot bara självförbrukning: <b>${kr(e.vinstMotSelf)}</b> kr. `
+    + `Batteriet slutar på <b>${e.dpSlutSoc} %</b>, vilket är inräknat i båda.</div>`;
 
   document.getElementById('econ').innerHTML =
     `<div class="kpi stor"><div class="k">Vinst mot utan batteri, hela horisonten</div>`
   + `<div class="v">${kr(e.vinstMotUtan)}<span class="u">kr</span></div>${rader}${jam}</div>`;
   document.getElementById('econnote').textContent =
     'Netto är köpt minus sålt plus slitage: positivt är en kostnad, negativt en nettointäkt. '
-  + 'Vinsten avser hela horisonten och räknar in batteriets nivå vid slutet. Ett enskilt dygn '
-  + 'går inte att räkna för sig, eftersom batteriet flyttar värde mellan dygnen.';
+  + 'Jämförelserna värderar energin som finns kvar i batteriet vid periodens slut, annars '
+  + 'skulle ett alternativ som tömmer batteriet se billigare ut än det är. Ett enskilt dygn '
+  + 'går av samma skäl inte att räkna för sig.';
 }
 
 // ---------- Timme för timme ----------
