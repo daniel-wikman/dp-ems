@@ -24,7 +24,9 @@
      color:var(--muted);margin:22px 0 8px}
 
   /* Status */
-  .status{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+  .status{display:grid;grid-template-columns:repeat(auto-fit,minmax(78px,1fr));gap:8px}
+  .status .kpi{padding:10px}
+  .status .kpi .v{font-size:17px}
   .kpi{background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:11px 12px}
   .kpi .k{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
   .kpi .v{font-family:'JetBrains Mono',monospace;font-size:19px;font-weight:500;margin-top:3px;
@@ -172,11 +174,13 @@ function badge(m, pw){
 // ---------- Status ----------
 function ritaStatus(){
   const p = PLAN[0];
-  const pris = DBG && DBG.imp ? DBG.imp[0] : null;
+  const impNu = DBG && DBG.imp ? DBG.imp[0] : null;
+  const expNu = DBG && DBG.exp ? DBG.exp[0] : null;
   document.getElementById('kpi').innerHTML =
       kort('Läge nu', p.mode + (p.power ? ' ' + p.power : ''), p.power ? 'kW' : '')
     + kort('Batteri', p.soc, '%')
-    + kort('Importpris', pris === null ? '–' : kr(pris), 'kr');
+    + kort('Köpa', impNu === null ? '–' : kr(impNu), 'kr')
+    + kort('Sälja', expNu === null ? '–' : kr(expNu), 'kr');
 
   const i = PLAN.findIndex(e => e.mode !== p.mode || e.power !== p.power);
   document.getElementById('next').innerHTML = i < 0
