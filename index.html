@@ -267,9 +267,7 @@ function ritaEkonomi(){
   // Bara jamforbara tal. De ra kostnaderna for alternativen utelamnas:
   // de tre slutar med olika mycket energi i batteriet, sa den som kostar
   // minst i kronor kan ha sparat minst. Vinstsiffrorna raknar in slutnivan.
-  const jam = `<div class="sub total">Planens elräkning för perioden: <b>${kr(e.dpKostnad)}</b> kr, `
-    + `alltså köpt minus sålt plus slitage.</div>`
-    + `<div class="sub">Sparat mot att inte ha batteri: <b>${kr(e.vinstMotUtan)}</b> kr. `
+  const jam = `<div class="sub">Sparat mot att inte ha batteri: <b>${kr(e.vinstMotUtan)}</b> kr. `
     + `Sparat mot bara självförbrukning: <b>${kr(e.vinstMotSelf)}</b> kr. `
     + `Batteriet slutar på <b>${e.dpSlutSoc} %</b>, vilket är inräknat i båda.</div>`;
 
