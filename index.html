@@ -24,7 +24,10 @@
      color:var(--muted);margin:22px 0 8px}
 
   /* Status */
-  .status{display:grid;grid-template-columns:repeat(auto-fit,minmax(78px,1fr));gap:8px}
+  /* Tva kolumner pa liten skarm: lage och batteri pa forsta raden,
+     kopa och salja pa andra. Fyra i bredd forst nar det far plats. */
+  .status{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+  @media (min-width:560px){ .status{grid-template-columns:repeat(4,1fr)} }
   .status .kpi{padding:10px}
   .status .kpi .v{font-size:17px}
   .status .kpi .sub{font-size:10.5px;margin-top:3px;white-space:nowrap}
