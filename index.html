@@ -27,6 +27,7 @@
   .status{display:grid;grid-template-columns:repeat(auto-fit,minmax(78px,1fr));gap:8px}
   .status .kpi{padding:10px}
   .status .kpi .v{font-size:17px}
+  .status .kpi .sub{font-size:10.5px;margin-top:3px;white-space:nowrap}
   .kpi{background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:11px 12px}
   .kpi .k{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
   .kpi .v{font-family:'JetBrains Mono',monospace;font-size:19px;font-weight:500;margin-top:3px;
@@ -164,8 +165,9 @@ const qT = q => `${String(Math.floor((((q%96)+96)%96)/4)).padStart(2,'0')}:${Str
 const kr = v => (v<0?'−':'') + Math.abs(v).toFixed(2).replace('.',',');
 let PLAN = null, DBG = null;
 
-function kort(k, v, u){
-  return `<div class="kpi"><div class="k">${k}</div><div class="v">${v}<span class="u">${u||''}</span></div></div>`;
+function kort(k, v, u, sub){
+  return `<div class="kpi"><div class="k">${k}</div><div class="v">${v}<span class="u">${u||''}</span></div>`
+       + (sub ? `<div class="sub">${sub}</div>` : '') + `</div>`;
 }
 function badge(m, pw){
   return `<span class="badge" style="background:${F[m]||'var(--muted)'}">${m}${pw?' '+pw:''}</span>`;
@@ -176,11 +178,15 @@ function ritaStatus(){
   const p = PLAN[0];
   const impNu = DBG && DBG.imp ? DBG.imp[0] : null;
   const expNu = DBG && DBG.exp ? DBG.exp[0] : null;
+  // Lagsta och hogsta i horisonten, sa nuvarande pris far ett sammanhang
+  const spann = a => (a && a.length)
+    ? `${kr(Math.min(...a))} – ${kr(Math.max(...a))}` : '';
+
   document.getElementById('kpi').innerHTML =
       kort('Läge nu', p.mode + (p.power ? ' ' + p.power : ''), p.power ? 'kW' : '')
     + kort('Batteri', p.soc, '%')
-    + kort('Köpa', impNu === null ? '–' : kr(impNu), 'kr')
-    + kort('Sälja', expNu === null ? '–' : kr(expNu), 'kr');
+    + kort('Köpa', impNu === null ? '–' : kr(impNu), 'kr', spann(DBG && DBG.imp))
+    + kort('Sälja', expNu === null ? '–' : kr(expNu), 'kr', spann(DBG && DBG.exp));
 
   const i = PLAN.findIndex(e => e.mode !== p.mode || e.power !== p.power);
   document.getElementById('next').innerHTML = i < 0
