@@ -10,7 +10,7 @@
     --bg:#0b1016; --surface:#131a23; --surface2:#1a232e; --border:#243040;
     --fg:#dbe4f0; --muted:#7a8799;
     --self:#22c55e; --stop:#64748b; --charge:#3b82f6; --discharge:#ef4444;
-    --absorb:#86efac; --cover:#15803d;
+    --absorb:#86efac; --cover:#15803d; --sol:#eab308; --last:#cbd5e1;
     --now:#f59e0b;
     box-sizing:border-box;
     padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
@@ -131,6 +131,9 @@
   <h2>Priser och effekter</h2>
   <div id="priser"></div>
 
+  <h2>Energiflöden</h2>
+  <div id="floden"></div>
+
   <h2>Ekonomi över horisonten</h2>
   <div class="econ" id="econ"></div>
   <div class="note" id="econnote"></div>
@@ -155,13 +158,17 @@
     <input id="c-url" placeholder="https://xxxx.connect.athom.com">
     <label>Token</label>
     <input id="c-token" type="password" placeholder="API-nyckel med läsrätt på Logic">
+    <label>Loggens adress (valfri)</label>
+    <input id="c-logurl" placeholder="https://script.google.com/macros/s/.../exec">
+    <label>Loggens nyckel</label>
+    <input id="c-logkey" type="password" placeholder="samma nyckel som i Log_Quarter">
     <div class="row">
       <button onclick="hamtaNu()">Hämta nu</button>
       <button onclick="glomUppgifter()">Glöm</button>
       <button onclick="skapaBokmarke()">Bokmärkeslänk</button>
     </div>
     <div class="mono" id="conn-log" style="margin-top:10px"></div>
-    <div class="note">Adress och token sparas bara i den här webbläsaren.</div>
+    <div class="note">Adress, token och loggnyckel sparas bara i den här webbläsaren. Utan logg visas bara planen i diagrammen över effekt och energiflöden.</div>
   </div>
 </details>
 
@@ -173,7 +180,7 @@ const F = { Self:'var(--self)', Absorb:'var(--absorb)', Cover:'var(--cover)',
 const qH = q => String(Math.floor((((q%96)+96)%96)/4)).padStart(2,'0');
 const qT = q => `${String(Math.floor((((q%96)+96)%96)/4)).padStart(2,'0')}:${String(((q%4)+4)%4*15).padStart(2,'0')}`;
 const kr = v => (v<0?'−':'') + Math.abs(v).toFixed(2).replace('.',',');
-let PLAN = null, DBG = null;
+let PLAN = null, DBG = null, UTFALL = [];
 
 function kort(k, v, u, sub){
   return `<div class="kpi"><div class="k">${k}</div><div class="v">${v}<span class="u">${u||''}</span></div>`
@@ -325,7 +332,7 @@ function ritaTimmar(){
 function ritaChart(elId, cfg){
   const W=720, H=cfg.hojd||130, L=30, R=6, T=8, B=18;
   const lines = cfg.lines||[];
-  const alla = [].concat(cfg.bars?cfg.bars.v:[], ...lines.map(l=>l.v));
+  const alla = [].concat(cfg.bars?cfg.bars.v:[], ...lines.map(l=>l.v)).filter(v=>v!==null && v!==undefined && !isNaN(v));
   const lo = Math.min(0, ...alla), hi = Math.max(...alla, .001);
   const n = Math.max(cfg.bars?cfg.bars.v.length:0, ...lines.map(l=>l.v.length));
   const step = (W-L-R)/n;
@@ -346,9 +353,15 @@ function ritaChart(elId, cfg){
     });
   }
   lines.forEach(se => {
-    const d = se.v.map((v,i)=>`${i?'L':'M'}${xc(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
+    let d = '', ny = true;
+    se.v.forEach((v,i) => {
+      if (v === null || v === undefined || isNaN(v)) { ny = true; return; }
+      d += `${ny?'M':'L'}${xc(i).toFixed(1)},${y(v).toFixed(1)} `; ny = false;
+    });
     s += `<path d="${d}" fill="none" stroke="${se.c}" stroke-width="1.8"/>`;
   });
+  if (cfg.nu !== undefined && cfg.nu >= 0)
+    s += `<line x1="${(L+step*cfg.nu).toFixed(1)}" y1="${T}" x2="${(L+step*cfg.nu).toFixed(1)}" y2="${H-B}" stroke="var(--now)" stroke-width="2"/>`;
   (cfg.times||[]).forEach((t,i) => { if (t)
     s += `<text x="${xc(i).toFixed(1)}" y="${H-3}" fill="var(--muted)" font-size="13" text-anchor="middle">${t}</text>`; });
   s += '</svg>';
@@ -366,7 +379,8 @@ function ritaChart(elId, cfg){
   const visaIndex = i => {
     out.innerHTML = `<b>${(cfg.times2&&cfg.times2[i])||''}</b>`
       + serier.map(se => `<span><i style="background:${se.c};display:inline-block;width:8px;`
-        + `height:8px;border-radius:2px;margin-right:4px"></i>${se.n} <b>${(+se.v[i]).toFixed(2)}</b></span>`).join('');
+        + `height:8px;border-radius:2px;margin-right:4px"></i>${se.n} <b>${(se.v[i]===null||se.v[i]===undefined)?'–':(+se.v[i]).toFixed(2)}</b></span>`).join('')
+      + (cfg.etikett && cfg.etikett[i] ? `<span>${cfg.etikett[i]}</span>` : '');
   };
   const peka = ev => {
     const r = box.getBoundingClientRect();
@@ -377,8 +391,9 @@ function ritaChart(elId, cfg){
     cur.style.display='block'; cur.style.left=(px+10)+'px';
   };
   box.onmousemove=peka; box.ontouchstart=peka; box.ontouchmove=peka;
-  box.onmouseleave=()=>{ cur.style.display='none'; visaIndex(0); };
-  visaIndex(0);
+  const start = (cfg.nu !== undefined && cfg.nu >= 0) ? cfg.nu : 0;
+  box.onmouseleave=()=>{ cur.style.display='none'; visaIndex(start); };
+  visaIndex(start);
 }
 
 function miniChart(serier, times, hojd){
@@ -411,7 +426,7 @@ function ritaPriser(){
 
   el.innerHTML = '<div class="note">Pris, kr/kWh</div><div id="ch-pris"></div>'
     + (DBG.solar && DBG.load
-        ? '<div class="note" style="margin-top:14px">Effekt, kW. Lasten är husets hela förbrukning: värmepump, varmvatten, avfuktare, baslast och elbil.</div>'
+        ? '<div class="note" style="margin-top:14px">Effekt, kW, från i dag 00:00. Utfall före den orange linjen, plan efter. Lasten är husets hela förbrukning: värmepump, varmvatten, avfuktare, baslast och elbil.</div>'
           + '<div id="ch-eff"></div>' : '');
 
   ritaChart('ch-pris', {
@@ -420,11 +435,147 @@ function ritaPriser(){
     times: tid, times2: tid2, hojd: 130,
   });
   if (DBG.solar && DBG.load) {
-    const lin = [{ n:'sol', v:DBG.solar, c:'var(--discharge)' },
-                 { n:'last', v:DBG.load, c:'var(--charge)' }];
-    if (DBG.surp) lin.push({ n:'överskott', v:DBG.surp, c:'var(--self)' });
-    ritaChart('ch-eff', { lines: lin, times: tid, times2: tid2, hojd: 130 });
+    // Fran i dag 00:00: utfall for passerade kvartar, plan darefter
+    const rows = byggDygn();
+    const nuI  = rows.findIndex(r => !r.faktisk);
+    ritaChart('ch-eff', {
+      lines: [{ n:'sol',  v: rows.map(r => r.sol),  c:'var(--discharge)' },
+              { n:'last', v: rows.map(r => r.last), c:'var(--charge)' }],
+      times:   rows.map(r => r.k % 12 === 0 ? qH(r.k) : ''),
+      times2:  rows.map(r => kTid(r.k)),
+      etikett: rows.map(r => r.faktisk ? 'utfall' : 'plan'),
+      nu: nuI, hojd: 130,
+    });
   }
+}
+
+// ---------- Utfall och plan, fran i dag 00:00 ----------
+// Passerade kvartar tas ur loggen i Google-arket, resten ur planen.
+// Loggen anger energi per kvart i kWh; har omraknat till kW.
+function byggDygn(){
+  if (!PLAN || !DBG) return [];
+  const cq   = DBG.currentQuarter || 0;
+  const idag = new Date().toLocaleDateString('sv-SE');
+  const utf  = {};
+  (UTFALL || []).forEach(r => { if (String(r.dygn) === idag) utf[+r.kvart] = r; });
+  const n = x => (x === '' || x === null || x === undefined) ? 0 : +x;
+  const rows = [];
+  for (let k = 0; k < cq; k++) {
+    const r = utf[k];
+    if (!r) { rows.push({ k, faktisk:true, sol:null, batt:null, grid:null, last:null, soc:null }); continue; }
+    const pv = n(r.pv)*4, bi = n(r.battIn)*4, bu = n(r.battUt)*4, im = n(r.import)*4, ex = n(r.export)*4;
+    rows.push({ k, faktisk:true, sol:pv, batt:bi-bu, grid:im-ex, last:pv+im+bu-bi-ex, soc:n(r.soc) });
+  }
+  PLAN.forEach((e,i) => rows.push({
+    k: cq+i, faktisk:false,
+    sol: DBG.solar ? DBG.solar[i] : null, last: DBG.load ? DBG.load[i] : null,
+    batt: (e.b === undefined ? null : e.b), grid: (e.g === undefined ? null : e.g), soc: e.soc,
+  }));
+  return rows;
+}
+const kTid = k => (Math.floor(k/96) ? 'imorgon ' : '') + qT(k % 96);
+
+// ---------- Energifloden ----------
+// Staplar: kallor uppat (sol, batteri som laddar ur, natimport),
+// mottagare nedat (batteri som laddar, export). Differensen ar forbrukningen.
+function ritaFloden(){
+  const el = document.getElementById('floden');
+  const rows = byggDygn();
+  if (!rows.length) { el.innerHTML = '<div class="note">Ingen data.</div>'; return; }
+  const W=720, H=200, L=30, R=30, T=8, B=18;
+  const n = rows.length, step = (W-L-R)/n, bw = Math.max(.8, step*.82);
+  const xc = i => L + step*(i+.5);
+  const del = r => ({
+    sol: Math.max(0, r.sol||0),
+    ur:  Math.max(0, -(r.batt||0)),
+    imp: Math.max(0, r.grid||0),
+    in:  Math.max(0, r.batt||0),
+    ut:  Math.max(0, -(r.grid||0)),
+  });
+  let hi = 0.5, lo = -0.5;
+  rows.forEach(r => { const d = del(r); hi = Math.max(hi, d.sol+d.ur+d.imp, r.last||0); lo = Math.min(lo, -(d.in+d.ut)); });
+  const y  = v => T + (H-T-B) * (1 - (v-lo)/(hi-lo));
+  const ys = s => T + (H-T-B) * (1 - s/100);
+  const nu = rows.findIndex(r => !r.faktisk);
+
+  let s = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="width:100%;height:${H}px">`;
+  s += `<line x1="${L}" y1="${y(0)}" x2="${W-R}" y2="${y(0)}" stroke="var(--border)"/>`;
+  s += `<text x="0" y="${y(hi)+4}" fill="var(--muted)" font-size="10">${hi.toFixed(0)}</text>`;
+  s += `<text x="0" y="${y(lo)+4}" fill="var(--muted)" font-size="10">${lo.toFixed(0)}</text>`;
+  s += `<text x="${W-R+4}" y="${ys(100)+4}" fill="var(--muted)" font-size="10">100%</text>`;
+  s += `<text x="${W-R+4}" y="${ys(0)}" fill="var(--muted)" font-size="10">0%</text>`;
+
+  rows.forEach((r,i) => {
+    if (r.sol === null && r.batt === null) return;
+    const d = del(r), op = r.faktisk ? 0.95 : 0.5, x = (xc(i)-bw/2).toFixed(2);
+    let upp = 0, ned = 0;
+    const stapel = (v, farg, uppat) => {
+      if (v <= 0.01) return;
+      const a = uppat ? upp : ned, b = uppat ? upp + v : ned - v;
+      const y1 = y(uppat ? b : a), y2 = y(uppat ? a : b);
+      s += `<rect x="${x}" y="${y1.toFixed(1)}" width="${bw.toFixed(2)}" height="${Math.max(.6,y2-y1).toFixed(1)}" fill="${farg}" opacity="${op}"/>`;
+      if (uppat) upp = b; else ned = b;
+    };
+    stapel(d.sol, 'var(--sol)', true);
+    stapel(d.ur,  'var(--charge)', true);
+    stapel(d.imp, 'var(--discharge)', true);
+    stapel(d.in,  'var(--charge)', false);
+    stapel(d.ut,  'var(--self)', false);
+  });
+
+  // Forbrukning och laddniva
+  const linje = (fn, farg, streck, fran, till) => {
+    let d = '', ny = true;
+    for (let i = fran; i < till; i++) {
+      const v = fn(rows[i]);
+      if (v === null || v === undefined || isNaN(v)) { ny = true; continue; }
+      d += `${ny?'M':'L'}${xc(i).toFixed(1)},${v.toFixed(1)} `; ny = false;
+    }
+    if (d) s += `<path d="${d}" fill="none" stroke="${farg}" stroke-width="1.8"${streck?' stroke-dasharray="4 3"':''}/>`;
+  };
+  const gr = nu < 0 ? n : nu;
+  linje(r => r.last === null ? null : y(r.last), 'var(--last)', false, 0, n);
+  linje(r => r.soc  === null ? null : ys(r.soc), 'var(--self)', false, 0, Math.min(n, gr+1));
+  linje(r => r.soc  === null ? null : ys(r.soc), 'var(--self)', true,  Math.max(0, gr), n);
+
+  rows.forEach((r,i) => {
+    if (r.k % 96 === 0 && i > 0) s += `<line x1="${xc(i)-step/2}" y1="${T}" x2="${xc(i)-step/2}" y2="${H-B}" stroke="var(--fg)" opacity=".35"/>`;
+    if (r.k % 12 === 0) s += `<text x="${xc(i).toFixed(1)}" y="${H-3}" fill="var(--muted)" font-size="13" text-anchor="middle">${qH(r.k)}</text>`;
+  });
+  if (nu >= 0) s += `<line x1="${(L+step*nu).toFixed(1)}" y1="${T}" x2="${(L+step*nu).toFixed(1)}" y2="${H-B}" stroke="var(--now)" stroke-width="2"/>`;
+  s += '</svg>';
+
+  const leg = [['Solceller','var(--sol)'],['Batteri','var(--charge)'],['Nät','var(--discharge)'],['Export','var(--self)']]
+    .map(([t,c]) => `<span><i style="background:${c}"></i>${t}</span>`).join('')
+    + `<span><i style="background:var(--last)"></i>Förbrukning</span>`
+    + `<span style="color:var(--self)">— laddnivå</span>`;
+
+  el.innerHTML = `<div class="chart" style="margin:0"><div class="cursor"></div>${s}</div>`
+               + `<div class="legend">${leg}</div><div class="readout"></div>`
+               + `<div class="note">Staplar uppåt är varifrån strömmen kommer, nedåt vart överskottet går. `
+               + `Före den orange linjen visas utfall ur loggen, efter den planen.</div>`;
+
+  const box = el.querySelector('.chart'), cur = el.querySelector('.cursor'), out = el.querySelector('.readout');
+  const f = v => (v === null || v === undefined) ? '–' : (+v).toFixed(2);
+  const visa = i => {
+    const r = rows[i];
+    out.innerHTML = `<b>${kTid(r.k)}</b><span>${r.faktisk ? 'utfall' : 'plan'}</span>`
+      + `<span>sol <b>${f(r.sol)}</b></span>`
+      + `<span>batteri <b>${f(r.batt)}</b></span>`
+      + `<span>nät <b>${f(r.grid)}</b></span>`
+      + `<span>förbrukning <b>${f(r.last)}</b></span>`
+      + `<span>SoC <b>${r.soc === null ? '–' : r.soc + ' %'}</b></span>`;
+  };
+  const peka = ev => {
+    const rc = box.getBoundingClientRect();
+    const px = (ev.touches?ev.touches[0].clientX:ev.clientX) - rc.left - 10;
+    const frac = (px/(rc.width-20)*W - L)/(W-L-R);
+    const i = Math.max(0, Math.min(n-1, Math.floor(frac*n)));
+    visa(i); cur.style.display='block'; cur.style.left=(px+10)+'px';
+  };
+  box.onmousemove=peka; box.ontouchstart=peka; box.ontouchmove=peka;
+  box.onmouseleave=()=>{ cur.style.display='none'; visa(Math.max(0, nu)); };
+  visa(Math.max(0, nu));
 }
 
 // ---------- Modeller ----------
@@ -463,7 +614,7 @@ function renderaAllt(planText, dbgText, exText){
   try { DBG = JSON.parse(dbgText); } catch(e) { DBG = null; }
   if (!PLAN || !PLAN.length) return;
   document.getElementById('app').style.display = 'block';
-  ritaStatus(); ritaDiagram(); ritaEkonomi(); ritaTimmar(); ritaPriser(); ritaModeller(); ritaLogg(exText);
+  ritaStatus(); ritaDiagram(); ritaEkonomi(); ritaTimmar(); ritaPriser(); ritaFloden(); ritaModeller(); ritaLogg(exText);
 }
 function renderaFranFalt(){
   renderaAllt(document.getElementById('raw-plan').value,
@@ -483,6 +634,20 @@ async function hamta(bas, token, variant){
   return r.json();
 }
 
+// Utfallet ur Google-arket. Misslyckas det behalls det senaste, och
+// diagrammen visar da bara planen for de kvartar som saknas.
+async function hamtaUtfall(){
+  const url = document.getElementById('c-logurl').value.trim();
+  const key = document.getElementById('c-logkey').value.trim();
+  if (!url || !key) return;
+  const idag = new Date().toLocaleDateString('sv-SE');
+  try {
+    const r = await fetch(`${url}?nyckel=${encodeURIComponent(key)}&vy=kvart&fran=${idag}`);
+    const j = await r.json();
+    if (Array.isArray(j.rader)) UTFALL = j.rader;
+  } catch(e) { /* behall senaste */ }
+}
+
 async function hamtaNu(){
   const bas = document.getElementById('c-url').value.trim().replace(/\/+$/,'');
   const token = document.getElementById('c-token').value.trim();
@@ -497,8 +662,12 @@ async function hamtaNu(){
       document.getElementById('raw-plan').value  = val[NAMN.plan]  || '';
       document.getElementById('raw-debug').value = val[NAMN.debug] || '';
       document.getElementById('raw-exec').value  = val[NAMN.exec]  || '';
+      await hamtaUtfall();
       renderaFranFalt();
-      try { localStorage.setItem('dpems', JSON.stringify({ bas, token, variant:v })); } catch(e){}
+      try {
+        const gammal = JSON.parse(localStorage.getItem('dpems')) || {};
+        localStorage.setItem('dpems', JSON.stringify({ ...gammal, bas, token, variant:v }));
+      } catch(e){}
       const n = new Date();
       status(`uppdaterad ${String(n.getHours()).padStart(2,'0')}:${String(n.getMinutes()).padStart(2,'0')}`,'ok');
       document.getElementById('conn-log').innerHTML = '';
@@ -528,6 +697,8 @@ function sparaFalt(){
   let cfg={}; try{ cfg=JSON.parse(localStorage.getItem('dpems'))||{}; }catch(e){}
   cfg.bas = document.getElementById('c-url').value.trim().replace(/\/+$/,'');
   cfg.token = document.getElementById('c-token').value.trim();
+  cfg.logUrl = document.getElementById('c-logurl').value.trim();
+  cfg.logKey = document.getElementById('c-logkey').value.trim();
   try { localStorage.setItem('dpems', JSON.stringify(cfg)); } catch(e){}
 }
 
@@ -542,12 +713,16 @@ window.addEventListener('load', () => {
   if (cfg){
     document.getElementById('c-url').value = cfg.bas || '';
     document.getElementById('c-token').value = cfg.token || '';
+    document.getElementById('c-logurl').value = cfg.logUrl || '';
+    document.getElementById('c-logkey').value = cfg.logKey || '';
     hamtaNu();
   } else {
     document.getElementById('d-conn').open = true;
   }
   document.getElementById('c-url').addEventListener('change', sparaFalt);
   document.getElementById('c-token').addEventListener('change', sparaFalt);
+  document.getElementById('c-logurl').addEventListener('change', sparaFalt);
+  document.getElementById('c-logkey').addEventListener('change', sparaFalt);
   setInterval(hamtaNu, 60000);
 });
 </script>
