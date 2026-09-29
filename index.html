@@ -128,7 +128,7 @@
   </div>
   <div class="readout" id="chart-readout"></div>
 
-  <h2>Priser och effekter</h2>
+  <h2>Priser</h2>
   <div id="priser"></div>
 
   <h2>Energiflöden</h2>
@@ -424,29 +424,13 @@ function ritaPriser(){
   const tid  = DBG.imp.map((_,i) => ((cq+i) % 12 === 0) ? qH(cq+i) : '');
   const tid2 = DBG.imp.map((_,i) => qT(cq+i));
 
-  el.innerHTML = '<div class="note">Pris, kr/kWh</div><div id="ch-pris"></div>'
-    + (DBG.solar && DBG.load
-        ? '<div class="note" style="margin-top:14px">Effekt, kW, från i dag 00:00. Utfall före den orange linjen, plan efter. Lasten är husets hela förbrukning: värmepump, varmvatten, avfuktare, baslast och elbil.</div>'
-          + '<div id="ch-eff"></div>' : '');
+  el.innerHTML = '<div class="note">Pris, kr/kWh</div><div id="ch-pris"></div>';
 
   ritaChart('ch-pris', {
     bars:  { n:'import', v:DBG.imp, c:'var(--charge)' },
     lines: [{ n:'export', v:DBG.exp, c:'var(--self)' }],
     times: tid, times2: tid2, hojd: 130,
   });
-  if (DBG.solar && DBG.load) {
-    // Fran i dag 00:00: utfall for passerade kvartar, plan darefter
-    const rows = byggDygn();
-    const nuI  = rows.findIndex(r => !r.faktisk);
-    ritaChart('ch-eff', {
-      lines: [{ n:'sol',  v: rows.map(r => r.sol),  c:'var(--discharge)' },
-              { n:'last', v: rows.map(r => r.last), c:'var(--charge)' }],
-      times:   rows.map(r => r.k % 12 === 0 ? qH(r.k) : ''),
-      times2:  rows.map(r => kTid(r.k)),
-      etikett: rows.map(r => r.faktisk ? 'utfall' : 'plan'),
-      nu: nuI, hojd: 130,
-    });
-  }
 }
 
 // ---------- Utfall och plan, fran i dag 00:00 ----------
@@ -462,14 +446,16 @@ function byggDygn(){
   const rows = [];
   for (let k = 0; k < cq; k++) {
     const r = utf[k];
-    if (!r) { rows.push({ k, faktisk:true, sol:null, batt:null, grid:null, last:null, soc:null }); continue; }
+    if (!r) { rows.push({ k, faktisk:true, sol:null, batt:null, grid:null, last:null, soc:null, mode:null }); continue; }
     const pv = n(r.pv)*4, bi = n(r.battIn)*4, bu = n(r.battUt)*4, im = n(r.import)*4, ex = n(r.export)*4;
-    rows.push({ k, faktisk:true, sol:pv, batt:bi-bu, grid:im-ex, last:pv+im+bu-bi-ex, soc:n(r.soc) });
+    rows.push({ k, faktisk:true, sol:pv, batt:bi-bu, grid:im-ex, last:pv+im+bu-bi-ex, soc:n(r.soc),
+                mode: r.lage || null, power: null });
   }
   PLAN.forEach((e,i) => rows.push({
     k: cq+i, faktisk:false,
     sol: DBG.solar ? DBG.solar[i] : null, last: DBG.load ? DBG.load[i] : null,
     batt: (e.b === undefined ? null : e.b), grid: (e.g === undefined ? null : e.g), soc: e.soc,
+    mode: e.mode, power: e.power,
   }));
   return rows;
 }
@@ -482,7 +468,8 @@ function ritaFloden(){
   const el = document.getElementById('floden');
   const rows = byggDygn();
   if (!rows.length) { el.innerHTML = '<div class="note">Ingen data.</div>'; return; }
-  const W=720, H=200, L=30, R=30, T=8, B=18;
+  // B rymmer lagesremsan (REMSA) och klockslagen under den
+  const REMSA = 12, W=720, H=214, L=30, R=30, T=8, B=18+REMSA+4;
   const n = rows.length, step = (W-L-R)/n, bw = Math.max(.8, step*.82);
   const xc = i => L + step*(i+.5);
   const del = r => ({
@@ -538,6 +525,14 @@ function ritaFloden(){
   linje(r => r.soc  === null ? null : ys(r.soc), 'var(--self)', false, 0, Math.min(n, gr+1));
   linje(r => r.soc  === null ? null : ys(r.soc), 'var(--self)', true,  Math.max(0, gr), n);
 
+  // Lagesremsa: utfall for passerade kvartar, plan darefter
+  const yR = H - B + 4;
+  rows.forEach((r,i) => {
+    if (!r.mode) return;
+    s += `<rect x="${(L+step*i).toFixed(2)}" y="${yR}" width="${(step+.4).toFixed(2)}" height="${REMSA}" `
+       + `fill="${F[r.mode]||'var(--muted)'}" opacity="${r.faktisk ? 1 : 0.55}"/>`;
+  });
+
   rows.forEach((r,i) => {
     if (r.k % 96 === 0 && i > 0) s += `<line x1="${xc(i)-step/2}" y1="${T}" x2="${xc(i)-step/2}" y2="${H-B}" stroke="var(--fg)" opacity=".35"/>`;
     if (r.k % 12 === 0) s += `<text x="${xc(i).toFixed(1)}" y="${H-3}" fill="var(--muted)" font-size="13" text-anchor="middle">${qH(r.k)}</text>`;
@@ -545,24 +540,30 @@ function ritaFloden(){
   if (nu >= 0) s += `<line x1="${(L+step*nu).toFixed(1)}" y1="${T}" x2="${(L+step*nu).toFixed(1)}" y2="${H-B}" stroke="var(--now)" stroke-width="2"/>`;
   s += '</svg>';
 
-  const leg = [['Solceller','var(--sol)'],['Batteri','var(--charge)'],['Nät','var(--discharge)'],['Export','var(--self)']]
+  const leg = [['Solceller','var(--sol)'],['Batteri','var(--charge)'],['Import','var(--discharge)'],['Export','var(--self)']]
     .map(([t,c]) => `<span><i style="background:${c}"></i>${t}</span>`).join('')
     + `<span><i style="background:var(--last)"></i>Förbrukning</span>`
     + `<span style="color:var(--self)">— laddnivå</span>`;
+  const legLage = ['Self','Absorb','Cover','Stop','Charge','Discharge']
+    .map(m => `<span><i style="background:${F[m]}"></i>${m}</span>`).join('');
 
   el.innerHTML = `<div class="chart" style="margin:0"><div class="cursor"></div>${s}</div>`
-               + `<div class="legend">${leg}</div><div class="readout"></div>`
+               + `<div class="legend">${leg}</div>`
+               + `<div class="legend" style="margin-top:2px">${legLage}</div><div class="readout"></div>`
                + `<div class="note">Staplar uppåt är varifrån strömmen kommer, nedåt vart överskottet går. `
-               + `Före den orange linjen visas utfall ur loggen, efter den planen.</div>`;
+               + `Remsan under visar läget. Före den orange linjen visas utfall ur loggen, efter den planen.</div>`;
 
   const box = el.querySelector('.chart'), cur = el.querySelector('.cursor'), out = el.querySelector('.readout');
   const f = v => (v === null || v === undefined) ? '–' : (+v).toFixed(2);
   const visa = i => {
     const r = rows[i];
-    out.innerHTML = `<b>${kTid(r.k)}</b><span>${r.faktisk ? 'utfall' : 'plan'}</span>`
+    const imp = r.grid === null ? null : Math.max(0, r.grid);
+    const exp = r.grid === null ? null : Math.max(0, -r.grid);
+    out.innerHTML = `<b>${kTid(r.k)}</b>${r.mode ? badge(r.mode, r.power) : ''}<span>${r.faktisk ? 'utfall' : 'plan'}</span>`
       + `<span>sol <b>${f(r.sol)}</b></span>`
       + `<span>batteri <b>${f(r.batt)}</b></span>`
-      + `<span>nät <b>${f(r.grid)}</b></span>`
+      + `<span>import <b>${f(imp)}</b></span>`
+      + `<span>export <b>${f(exp)}</b></span>`
       + `<span>förbrukning <b>${f(r.last)}</b></span>`
       + `<span>SoC <b>${r.soc === null ? '–' : r.soc + ' %'}</b></span>`;
   };
