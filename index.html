@@ -31,6 +31,12 @@
   @media (min-width:560px){ .status{grid-template-columns:repeat(4,1fr)} }
   .status .kpi{padding:10px}
   .status .kpi .v{font-size:17px}
+  .rubrikrad{display:flex;justify-content:space-between;align-items:flex-end;gap:10px;margin:22px 0 8px}
+  .rubrikrad h2{margin:0}
+  .vy{display:flex;border:1px solid var(--border);border-radius:7px;overflow:hidden}
+  .vy button{border:0;border-radius:0;padding:5px 10px;font-size:12px;background:var(--surface)}
+  .vy button + button{border-left:1px solid var(--border)}
+  .vy button.aktiv{background:var(--surface2);color:var(--fg);font-weight:600}
   .status .kpi .sub{font-size:10.5px;margin-top:3px;white-space:nowrap}
   .kpi{background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:11px 12px}
   .kpi .k{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
@@ -112,27 +118,18 @@
   <div class="status" id="kpi"></div>
   <div class="next" id="next"></div>
 
-  <h2>Planen, hela horisonten</h2>
-  <div class="chart" id="chartbox">
-    <div class="cursor" id="chart-cursor"></div>
-    <div id="chart"></div>
-    <div class="legend">
-      <span><i style="background:var(--self)"></i>Self</span>
-      <span><i style="background:var(--absorb)"></i>Absorb</span>
-      <span><i style="background:var(--cover)"></i>Cover</span>
-      <span><i style="background:var(--stop)"></i>Stop</span>
-      <span><i style="background:var(--charge)"></i>Charge</span>
-      <span><i style="background:var(--discharge)"></i>Discharge</span>
-      <span style="color:var(--now)">| nu</span>
+  <div class="rubrikrad">
+    <h2>Energiflöden</h2>
+    <div class="vy" id="vy">
+      <button data-vy="idag">Idag</button>
+      <button data-vy="imorgon">Imorgon</button>
+      <button data-vy="bada">2 dagar</button>
     </div>
   </div>
-  <div class="readout" id="chart-readout"></div>
+  <div id="floden"></div>
 
   <h2>Priser</h2>
   <div id="priser"></div>
-
-  <h2>Energiflöden</h2>
-  <div id="floden"></div>
 
   <h2>Ekonomi över horisonten</h2>
   <div class="econ" id="econ"></div>
@@ -211,64 +208,6 @@ function ritaStatus(){
     : `Nästa byte <b>${qT(PLAN[i].q)}</b> till <b>${PLAN[i].mode}${PLAN[i].power ? ' ' + PLAN[i].power + ' kW' : ''}</b>`;
 }
 
-// ---------- Diagram ----------
-function ritaDiagram(){
-  const W = 720, H = 190, L = 26, R = 6, T = 8, B = 20;
-  const n = PLAN.length;
-  const x = i => L + (W - L - R) * i / n;
-  const y = s => T + (H - T - B) * (1 - s / 100);
-  let s = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">`;
-
-  // lagesband
-  PLAN.forEach((e, i) => {
-    s += `<rect x="${x(i).toFixed(1)}" y="${T}" width="${((W-L-R)/n + .6).toFixed(2)}" `
-       + `height="${H-T-B}" fill="${F[e.mode]||'var(--muted)'}" opacity="0.30"/>`;
-  });
-
-  // rutnat 0/50/100 %
-  [0,50,100].forEach(v => {
-    s += `<line x1="${L}" y1="${y(v)}" x2="${W-R}" y2="${y(v)}" stroke="var(--border)"/>`
-       + `<text x="0" y="${y(v)+4}" fill="var(--muted)" font-size="10">${v}</text>`;
-  });
-
-  // dygnsgrans och klockslag var tredje timme
-  PLAN.forEach((e, i) => {
-    if (e.q === 0) s += `<line x1="${x(i).toFixed(1)}" y1="${T}" x2="${x(i).toFixed(1)}" y2="${H-B}" stroke="var(--fg)" opacity=".35"/>`;
-    if (e.q % 12 === 0) s += `<text x="${x(i).toFixed(1)}" y="${H-5}" fill="var(--muted)" font-size="13" text-anchor="middle">${qH(e.q)}</text>`;
-  });
-
-  // SoC
-  const d = PLAN.map((e,i) => `${i?'L':'M'}${x(i).toFixed(1)},${y(e.soc).toFixed(1)}`).join(' ');
-  s += `<path d="${d}" fill="none" stroke="#e8f0ff" stroke-width="2"/>`;
-  s += `<line x1="${L}" y1="${T}" x2="${L}" y2="${H-B}" stroke="var(--now)" stroke-width="2"/>`;
-  s += '</svg>';
-  document.getElementById('chart').innerHTML = s;
-
-  const box = document.getElementById('chartbox');
-  const cur = document.getElementById('chart-cursor');
-  const out = document.getElementById('chart-readout');
-  const visaIndex = i => {
-    const e = PLAN[i];
-    const dag = ['idag','imorgon','övermorgon'][e.day] || ('dag ' + e.day);
-    const imp = e.noImp === true ? 'utan nätköp'
-              : e.noImp === false ? 'med nätköp' : '';
-    out.innerHTML = `<b>${dag} ${qT(e.q)}</b>${badge(e.mode, e.power)}`
-      + `<span>SoC <b>${e.soc} %</b></span>`
-      + (imp ? `<span style="color:${e.noImp ? 'var(--self)' : 'var(--now)'}">${imp}</span>` : '');
-  };
-  const peka = ev => {
-    const r = box.getBoundingClientRect();
-    const px = (ev.touches ? ev.touches[0].clientX : ev.clientX) - r.left - 10;
-    const frac = (px / (r.width - 20) * W - L) / (W - L - R);
-    const i = Math.max(0, Math.min(n - 1, Math.floor(frac * n)));
-    visaIndex(i);
-    cur.style.display = 'block';
-    cur.style.left = (px + 10) + 'px';
-  };
-  box.onmousemove = peka; box.ontouchstart = peka; box.ontouchmove = peka;
-  box.onmouseleave = () => { cur.style.display = 'none'; visaIndex(0); };
-  visaIndex(0);
-}
 
 // ---------- Ekonomi ----------
 function ritaEkonomi(){
@@ -346,6 +285,7 @@ function ritaChart(elId, cfg){
   if (cfg.bars){
     const bw = Math.max(.8, step*.8), y0 = y(Math.max(lo,0));
     cfg.bars.v.forEach((v,i) => {
+      if (v === null || v === undefined || isNaN(v)) return;
       const yy = y(v);
       s += `<rect x="${(xc(i)-bw/2).toFixed(2)}" y="${Math.min(yy,y0).toFixed(1)}" `
          + `width="${bw.toFixed(2)}" height="${Math.max(.8,Math.abs(y0-yy)).toFixed(1)}" `
@@ -419,17 +359,15 @@ function miniChart(serier, times, hojd){
 
 function ritaPriser(){
   const el = document.getElementById('priser');
-  if (!DBG || !DBG.imp) { el.innerHTML = '<div class="note">Ingen debugdata.</div>'; return; }
-  const cq = DBG.currentQuarter || 0;
-  const tid  = DBG.imp.map((_,i) => ((cq+i) % 12 === 0) ? qH(cq+i) : '');
-  const tid2 = DBG.imp.map((_,i) => qT(cq+i));
-
-  el.innerHTML = '<div class="note">Pris, kr/kWh</div><div id="ch-pris"></div>';
-
+  const rows = vyRader();
+  if (!rows.length) { el.innerHTML = '<div class="note">Inga priser för vald period.</div>'; return; }
+  el.innerHTML = '<div class="note">Pris, kr/kWh. Före den orange linjen de priser som gällde, efter den kommande.</div><div id="ch-pris"></div>';
   ritaChart('ch-pris', {
-    bars:  { n:'import', v:DBG.imp, c:'var(--charge)' },
-    lines: [{ n:'export', v:DBG.exp, c:'var(--self)' }],
-    times: tid, times2: tid2, hojd: 130,
+    bars:  { n:'import', v: rows.map(r => r.imp), c:'var(--discharge)' },
+    lines: [{ n:'export', v: rows.map(r => r.exp), c:'var(--self)' }],
+    times:  rows.map(r => r.k % 12 === 0 ? qH(r.k) : ''),
+    times2: rows.map(r => kTid(r.k)),
+    nu: nuIndex(rows), hojd: 130,
   });
 }
 
@@ -446,19 +384,39 @@ function byggDygn(){
   const rows = [];
   for (let k = 0; k < cq; k++) {
     const r = utf[k];
-    if (!r) { rows.push({ k, faktisk:true, sol:null, batt:null, grid:null, last:null, soc:null, mode:null }); continue; }
+    if (!r) { rows.push({ k, faktisk:true, sol:null, batt:null, grid:null, last:null, soc:null, mode:null, imp:null, exp:null }); continue; }
     const pv = n(r.pv)*4, bi = n(r.battIn)*4, bu = n(r.battUt)*4, im = n(r.import)*4, ex = n(r.export)*4;
     rows.push({ k, faktisk:true, sol:pv, batt:bi-bu, grid:im-ex, last:pv+im+bu-bi-ex, soc:n(r.soc),
-                mode: r.lage || null, power: null });
+                mode: r.lage || null, power: null,
+                imp: r.impPris === '' ? null : n(r.impPris), exp: r.expPris === '' ? null : n(r.expPris) });
   }
   PLAN.forEach((e,i) => rows.push({
     k: cq+i, faktisk:false,
     sol: DBG.solar ? DBG.solar[i] : null, last: DBG.load ? DBG.load[i] : null,
     batt: (e.b === undefined ? null : e.b), grid: (e.g === undefined ? null : e.g), soc: e.soc,
     mode: e.mode, power: e.power,
+    imp: DBG.imp ? DBG.imp[i] : null, exp: DBG.exp ? DBG.exp[i] : null,
   }));
   return rows;
 }
+
+// Vyval: idag, imorgon eller bada. Sparas i webblasaren.
+let VY = 'bada';
+try { VY = localStorage.getItem('dpems_vy') || 'bada'; } catch(e){}
+function vyRader(){
+  const rows = byggDygn();
+  if (VY === 'idag')    return rows.filter(r => r.k < 96);
+  if (VY === 'imorgon') return rows.filter(r => r.k >= 96);
+  return rows;
+}
+function valjVy(v){
+  VY = v;
+  try { localStorage.setItem('dpems_vy', v); } catch(e){}
+  document.querySelectorAll('#vy button').forEach(b => b.classList.toggle('aktiv', b.dataset.vy === v));
+  ritaPriser(); ritaFloden();
+}
+// Index for nu-linjen inom vyn, eller -1 om nu inte ligger i vyn
+const nuIndex = rows => DBG ? rows.findIndex(r => r.k === (DBG.currentQuarter || 0)) : -1;
 const kTid = k => (Math.floor(k/96) ? 'imorgon ' : '') + qT(k % 96);
 
 // ---------- Energifloden ----------
@@ -466,8 +424,11 @@ const kTid = k => (Math.floor(k/96) ? 'imorgon ' : '') + qT(k % 96);
 // mottagare nedat (batteri som laddar, export). Differensen ar forbrukningen.
 function ritaFloden(){
   const el = document.getElementById('floden');
-  const rows = byggDygn();
-  if (!rows.length) { el.innerHTML = '<div class="note">Ingen data.</div>'; return; }
+  const rows = vyRader();
+  if (!rows.length) {
+    el.innerHTML = `<div class="note">${VY === 'imorgon' ? 'Morgondagens priser är inte publicerade än, de kommer kring 13.' : 'Ingen data.'}</div>`;
+    return;
+  }
   // B rymmer lagesremsan (REMSA) och klockslagen under den
   const REMSA = 12, W=720, H=214, L=30, R=30, T=8, B=18+REMSA+4;
   const n = rows.length, step = (W-L-R)/n, bw = Math.max(.8, step*.82);
@@ -483,7 +444,7 @@ function ritaFloden(){
   rows.forEach(r => { const d = del(r); hi = Math.max(hi, d.sol+d.ur+d.imp, r.last||0); lo = Math.min(lo, -(d.in+d.ut)); });
   const y  = v => T + (H-T-B) * (1 - (v-lo)/(hi-lo));
   const ys = s => T + (H-T-B) * (1 - s/100);
-  const nu = rows.findIndex(r => !r.faktisk);
+  const nu = nuIndex(rows);
 
   let s = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="width:100%;height:${H}px">`;
   s += `<line x1="${L}" y1="${y(0)}" x2="${W-R}" y2="${y(0)}" stroke="var(--border)"/>`;
@@ -520,7 +481,7 @@ function ritaFloden(){
     }
     if (d) s += `<path d="${d}" fill="none" stroke="${farg}" stroke-width="1.8"${streck?' stroke-dasharray="4 3"':''}/>`;
   };
-  const gr = nu < 0 ? n : nu;
+  const gr = nu < 0 ? (rows[0] && rows[0].faktisk ? n : 0) : nu;
   linje(r => r.last === null ? null : y(r.last), 'var(--last)', false, 0, n);
   linje(r => r.soc  === null ? null : ys(r.soc), 'var(--self)', false, 0, Math.min(n, gr+1));
   linje(r => r.soc  === null ? null : ys(r.soc), 'var(--self)', true,  Math.max(0, gr), n);
@@ -540,7 +501,7 @@ function ritaFloden(){
   if (nu >= 0) s += `<line x1="${(L+step*nu).toFixed(1)}" y1="${T}" x2="${(L+step*nu).toFixed(1)}" y2="${H-B}" stroke="var(--now)" stroke-width="2"/>`;
   s += '</svg>';
 
-  const leg = [['Solceller','var(--sol)'],['Batteri','var(--charge)'],['Import','var(--discharge)'],['Export','var(--self)']]
+  const leg = [['Sol','var(--sol)'],['Batteri','var(--charge)'],['Import','var(--discharge)'],['Export','var(--self)']]
     .map(([t,c]) => `<span><i style="background:${c}"></i>${t}</span>`).join('')
     + `<span><i style="background:var(--last)"></i>Förbrukning</span>`
     + `<span style="color:var(--self)">— laddnivå</span>`;
@@ -577,6 +538,7 @@ function ritaFloden(){
   box.onmousemove=peka; box.ontouchstart=peka; box.ontouchmove=peka;
   box.onmouseleave=()=>{ cur.style.display='none'; visa(Math.max(0, nu)); };
   visa(Math.max(0, nu));
+  document.querySelectorAll('#vy button').forEach(b => b.classList.toggle('aktiv', b.dataset.vy === VY));
 }
 
 // ---------- Modeller ----------
@@ -615,7 +577,7 @@ function renderaAllt(planText, dbgText, exText){
   try { DBG = JSON.parse(dbgText); } catch(e) { DBG = null; }
   if (!PLAN || !PLAN.length) return;
   document.getElementById('app').style.display = 'block';
-  ritaStatus(); ritaDiagram(); ritaEkonomi(); ritaTimmar(); ritaPriser(); ritaFloden(); ritaModeller(); ritaLogg(exText);
+  ritaStatus(); ritaEkonomi(); ritaTimmar(); ritaPriser(); ritaFloden(); ritaModeller(); ritaLogg(exText);
 }
 function renderaFranFalt(){
   renderaAllt(document.getElementById('raw-plan').value,
@@ -720,6 +682,7 @@ window.addEventListener('load', () => {
   } else {
     document.getElementById('d-conn').open = true;
   }
+  document.querySelectorAll('#vy button').forEach(b => b.addEventListener('click', () => valjVy(b.dataset.vy)));
   document.getElementById('c-url').addEventListener('change', sparaFalt);
   document.getElementById('c-token').addEventListener('change', sparaFalt);
   document.getElementById('c-logurl').addEventListener('change', sparaFalt);
