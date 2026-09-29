@@ -503,8 +503,8 @@ function ritaFloden(){
 
   const leg = [['Sol','var(--sol)'],['Batteri','var(--charge)'],['Import','var(--discharge)'],['Export','var(--self)']]
     .map(([t,c]) => `<span><i style="background:${c}"></i>${t}</span>`).join('')
-    + `<span><i style="background:var(--last)"></i>Förbrukning</span>`
-    + `<span style="color:var(--self)">— laddnivå</span>`;
+    + `<span style="color:var(--last)">— Förbrukning</span>`
+    + `<span style="color:var(--self)">— Laddnivå</span>`;
   const legLage = ['Self','Absorb','Cover','Stop','Charge','Discharge']
     .map(m => `<span><i style="background:${F[m]}"></i>${m}</span>`).join('');
 
