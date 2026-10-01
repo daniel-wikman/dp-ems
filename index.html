@@ -246,7 +246,7 @@ function ritaEkonomi(){
   const el = document.getElementById('econ');
   const e = DBG && DBG.ekonomi;
   if (!e || !e.dagar) { el.innerHTML = ''; return; }
-  const kap = e.kapKwh || 25.6, smin = (e.socMin !== undefined ? e.socMin : 3);
+  const kap = e.kapKwh || 24.3, smin = (e.socMin !== undefined ? e.socMin : 3);
   const term = (e.termPris !== undefined ? e.termPris : (DBG.termPrice || 0));
   const harVinst = e.dagar.every(d => d.vinst !== undefined);
 
