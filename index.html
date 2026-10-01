@@ -131,7 +131,7 @@
   <h2>Priser</h2>
   <div id="priser"></div>
 
-  <h2>Ekonomi över horisonten</h2>
+  <h2>Ekonomi för vald period</h2>
   <div class="econ" id="econ"></div>
   <div class="note" id="econnote"></div>
 
@@ -210,37 +210,87 @@ function ritaStatus(){
 
 
 // ---------- Ekonomi ----------
+// Dagens utfall ur loggen, for de kvartar som passerat. Samma uppdelning
+// som DP:s dygn: kopt, salt, slitage, vad det kostat utan batteri, och
+// forandringen i batteriets energi vardesatt till terminalpriset.
+function utfallIdag(kap, smin, term){
+  if (!DBG) return null;
+  const idag = new Date().toLocaleDateString('sv-SE');
+  const cq = DBG.currentQuarter || 0;
+  const n = x => (x === '' || x === null || x === undefined) ? 0 : +x;
+  const rader = (UTFALL || []).filter(r => String(r.dygn) === idag && +r.kvart < cq)
+                              .sort((a, b) => +a.kvart - +b.kvart);
+  if (!rader.length) return null;
+  const kwh = s => Math.max(0, s - smin) / 100 * kap;
+  let kop = 0, salj = 0, slit = 0, utan = 0;
+  rader.forEach(r => {
+    const pv = n(r.pv), bi = n(r.battIn), bu = n(r.battUt), im = n(r.import), ex = n(r.export);
+    const pI = n(r.impPris), pE = n(r.expPris);
+    const last = pv + im + bu - bi - ex;
+    kop  += im * pI;
+    salj += ex * pE;
+    slit += n(r.slitage);
+    utan += Math.max(0, last - pv) * pI - Math.max(0, pv - last) * pE;
+  });
+  const f = rader[0], l = rader[rader.length - 1];
+  // Laddnivan loggas i slutet av kvarten; borjan av forsta kvarten raknas
+  // tillbaka med batteriets in- och utflode.
+  const socStart = n(f.soc) - (n(f.battIn) * 0.975 - n(f.battUt) / 0.975) / kap * 100;
+  const socSlut  = n(l.soc);
+  const lager = (kwh(socSlut) - kwh(socStart)) * term;
+  return { namn: 'Idag hittills, utfall', kop, salj, slit, utan, socStart, socSlut, lager,
+           vinst: utan - (kop - salj + slit) + lager, saknas: cq - rader.length };
+}
+
 function ritaEkonomi(){
+  const el = document.getElementById('econ');
   const e = DBG && DBG.ekonomi;
-  if (!e) { document.getElementById('econ').innerHTML = ''; return; }
-  const namn = ['Resten av idag','Imorgon','Övermorgon'];
-  const dagar = e.dagar || [];
-  const sum = f => dagar.reduce((a, d) => a + (d[f] || 0), 0);
-  // Netto = kopt - salt + slitage. Positivt ar en kostnad, negativt en intakt.
-  const rad = (etikett, kop, salj, slit, klass) => {
-    const netto = kop - salj + slit;
-    return `<div class="sub${klass || ''}">${etikett}: köpt <b>${kr(kop)}</b> kr, `
-      + `sålt <b>${kr(salj)}</b> kr, slitage <b>${kr(slit)}</b> kr `
-      + `&rarr; netto <b style="color:${netto <= 0 ? 'var(--self)' : 'var(--fg)'}">${kr(netto)}</b> kr</div>`;
+  if (!e || !e.dagar) { el.innerHTML = ''; return; }
+  const kap = e.kapKwh || 25.6, smin = (e.socMin !== undefined ? e.socMin : 3);
+  const term = (e.termPris !== undefined ? e.termPris : (DBG.termPrice || 0));
+  const harVinst = e.dagar.every(d => d.vinst !== undefined);
+
+  const seg = [];
+  if (VY !== 'imorgon') {
+    const u = utfallIdag(kap, smin, term);
+    if (u) seg.push(u);
+    const d0 = e.dagar.find(d => d.dag === 0);
+    if (d0) seg.push({ namn: 'Resten av idag, plan', ...d0 });
+  }
+  if (VY !== 'idag') {
+    const d1 = e.dagar.find(d => d.dag === 1);
+    if (d1) seg.push({ namn: 'Imorgon, plan', ...d1 });
+  }
+  if (!seg.length) {
+    el.innerHTML = `<div class="note">${VY === 'imorgon' ? 'Morgondagens priser är inte publicerade än.' : 'Ingen data.'}</div>`;
+    return;
+  }
+
+  const rad = s => {
+    const netto = s.kop - s.salj + s.slit;
+    return `<div class="sub">${s.namn}: köpt <b>${kr(s.kop)}</b>, sålt <b>${kr(s.salj)}</b>, `
+      + `slitage <b>${kr(s.slit)}</b> &rarr; netto <b style="color:${netto <= 0 ? 'var(--self)' : 'var(--fg)'}">${kr(netto)}</b> kr`
+      + (s.vinst !== undefined
+          ? `. Batteriets energi ${s.lager >= 0 ? '+' : ''}${kr(s.lager)} kr, vinst <b>${kr(s.vinst)}</b> kr`
+          : '')
+      + (s.saknas ? `. ${s.saknas} kvartar saknas i loggen` : '')
+      + `</div>`;
   };
+  const summa = seg.reduce((a, s) => a + (s.vinst || 0), 0);
+  const period = VY === 'idag' ? 'idag' : VY === 'imorgon' ? 'imorgon' : 'idag och imorgon';
+  const self = VY === 'bada'
+    ? `<div class="sub">Mot bara självförbrukning, planen från nu: <b>${kr(e.vinstMotSelf)}</b> kr.</div>` : '';
 
-  const rader = dagar.map(d => rad(namn[d.dag] || ('Dag ' + d.dag), d.kop, d.salj, d.slit)).join('')
-    + (dagar.length > 1 ? rad('Totalt', sum('kop'), sum('salj'), sum('slit'), ' total') : '');
-  // Bara jamforbara tal. De ra kostnaderna for alternativen utelamnas:
-  // de tre slutar med olika mycket energi i batteriet, sa den som kostar
-  // minst i kronor kan ha sparat minst. Vinstsiffrorna raknar in slutnivan.
-  const jam = `<div class="sub">Sparat mot att inte ha batteri: <b>${kr(e.vinstMotUtan)}</b> kr. `
-    + `Sparat mot bara självförbrukning: <b>${kr(e.vinstMotSelf)}</b> kr. `
-    + `Batteriet slutar på <b>${e.dpSlutSoc} %</b>, vilket är inräknat i båda.</div>`;
-
-  document.getElementById('econ').innerHTML =
-    `<div class="kpi stor"><div class="k">Vinst mot utan batteri, hela horisonten</div>`
-  + `<div class="v">${kr(e.vinstMotUtan)}<span class="u">kr</span></div>${rader}${jam}</div>`;
+  el.innerHTML = `<div class="kpi stor"><div class="k">Vinst mot utan batteri, ${period}</div>`
+    + (harVinst ? `<div class="v">${kr(summa)}<span class="u">kr</span></div>`
+                : `<div class="v">${kr(e.vinstMotUtan)}<span class="u">kr</span></div>`
+                  + `<div class="sub">Uppdela per dygn kräver den nya versionen av DP_EMS; visar hela horisonten.</div>`)
+    + seg.map(rad).join('') + self + `</div>`;
   document.getElementById('econnote').textContent =
-    'Netto är köpt minus sålt plus slitage: positivt är en kostnad, negativt en nettointäkt. '
-  + 'Jämförelserna värderar energin som finns kvar i batteriet vid periodens slut, annars '
-  + 'skulle ett alternativ som tömmer batteriet se billigare ut än det är. Ett enskilt dygn '
-  + 'går av samma skäl inte att räkna för sig.';
+    'Netto är köpt minus sålt plus slitage. Vinsten jämför med vad samma förbrukning och sol hade kostat utan batteri. '
+  + 'Förändringen i batteriets energi under perioden värderas till terminalpriset, annars skulle en period som '
+  + 'tömmer batteriet se lönsammare ut än den är och en period som fyller det olönsam. Dygnen summerar därför till '
+  + 'hela horisontens vinst. Utfallet för idag kommer ur loggen.';
 }
 
 // ---------- Timme för timme ----------
@@ -413,7 +463,7 @@ function valjVy(v){
   VY = v;
   try { localStorage.setItem('dpems_vy', v); } catch(e){}
   document.querySelectorAll('#vy button').forEach(b => b.classList.toggle('aktiv', b.dataset.vy === v));
-  ritaPriser(); ritaFloden();
+  ritaPriser(); ritaFloden(); ritaEkonomi();
 }
 // Index for nu-linjen inom vyn, eller -1 om nu inte ligger i vyn
 const nuIndex = rows => DBG ? rows.findIndex(r => r.k === (DBG.currentQuarter || 0)) : -1;
@@ -482,7 +532,8 @@ function ritaFloden(){
     if (d) s += `<path d="${d}" fill="none" stroke="${farg}" stroke-width="1.8"${streck?' stroke-dasharray="4 3"':''}/>`;
   };
   const gr = nu < 0 ? (rows[0] && rows[0].faktisk ? n : 0) : nu;
-  linje(r => r.last === null ? null : y(r.last), 'var(--last)', false, 0, n);
+  linje(r => r.last === null ? null : y(r.last), 'var(--last)', false, 0, Math.min(n, gr+1));
+  linje(r => r.last === null ? null : y(r.last), 'var(--last)', true,  Math.max(0, gr), n);
   linje(r => r.soc  === null ? null : ys(r.soc), 'var(--self)', false, 0, Math.min(n, gr+1));
   linje(r => r.soc  === null ? null : ys(r.soc), 'var(--self)', true,  Math.max(0, gr), n);
 
@@ -521,12 +572,12 @@ function ritaFloden(){
     const imp = r.grid === null ? null : Math.max(0, r.grid);
     const exp = r.grid === null ? null : Math.max(0, -r.grid);
     out.innerHTML = `<b>${kTid(r.k)}</b>${r.mode ? badge(r.mode, r.power) : ''}<span>${r.faktisk ? 'utfall' : 'plan'}</span>`
-      + `<span>sol <b>${f(r.sol)}</b></span>`
-      + `<span>batteri <b>${f(r.batt)}</b></span>`
-      + `<span>import <b>${f(imp)}</b></span>`
-      + `<span>export <b>${f(exp)}</b></span>`
-      + `<span>förbrukning <b>${f(r.last)}</b></span>`
-      + `<span>SoC <b>${r.soc === null ? '–' : r.soc + ' %'}</b></span>`;
+      + `<span style="color:var(--sol)">sol <b>${f(r.sol)}</b></span>`
+      + `<span style="color:var(--charge)">batteri <b>${f(r.batt)}</b></span>`
+      + `<span style="color:var(--discharge)">import <b>${f(imp)}</b></span>`
+      + `<span style="color:var(--self)">export <b>${f(exp)}</b></span>`
+      + `<span style="color:var(--last)">förbrukning <b>${f(r.last)}</b></span>`
+      + `<span style="color:var(--self)">SoC <b>${r.soc === null ? '–' : r.soc + ' %'}</b></span>`;
   };
   const peka = ev => {
     const rc = box.getBoundingClientRect();
