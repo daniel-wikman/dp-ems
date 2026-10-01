@@ -259,7 +259,8 @@ function ritaEkonomi(){
   }
   if (VY !== 'idag') {
     const d1 = e.dagar.find(d => d.dag === 1);
-    if (d1) seg.push({ namn: 'Imorgon, plan', ...d1 });
+    const prog1 = (PLAN || []).some(p => p.day === 1 && p.prog);
+    if (d1) seg.push({ namn: prog1 ? 'Imorgon, plan på prisprognos' : 'Imorgon, plan', ...d1 });
   }
   if (!seg.length) {
     el.innerHTML = `<div class="note">${VY === 'imorgon' ? 'Morgondagens priser är inte publicerade än.' : 'Ingen data.'}</div>`;
@@ -339,7 +340,7 @@ function ritaChart(elId, cfg){
       const yy = y(v);
       s += `<rect x="${(xc(i)-bw/2).toFixed(2)}" y="${Math.min(yy,y0).toFixed(1)}" `
          + `width="${bw.toFixed(2)}" height="${Math.max(.8,Math.abs(y0-yy)).toFixed(1)}" `
-         + `fill="${cfg.bars.c}" opacity=".85"/>`;
+         + `fill="${cfg.bars.c}" opacity="${cfg.bars.svag && cfg.bars.svag[i] ? '.4' : '.85'}"/>`;
     });
   }
   lines.forEach(se => {
@@ -348,7 +349,7 @@ function ritaChart(elId, cfg){
       if (v === null || v === undefined || isNaN(v)) { ny = true; return; }
       d += `${ny?'M':'L'}${xc(i).toFixed(1)},${y(v).toFixed(1)} `; ny = false;
     });
-    s += `<path d="${d}" fill="none" stroke="${se.c}" stroke-width="1.8"/>`;
+    s += `<path d="${d}" fill="none" stroke="${se.c}" stroke-width="1.8"${se.dash ? ' stroke-dasharray="4 3"' : ''}/>`;
   });
   if (cfg.nu !== undefined && cfg.nu >= 0)
     s += `<line x1="${(L+step*cfg.nu).toFixed(1)}" y1="${T}" x2="${(L+step*cfg.nu).toFixed(1)}" y2="${H-B}" stroke="var(--now)" stroke-width="2"/>`;
@@ -411,10 +412,17 @@ function ritaPriser(){
   const el = document.getElementById('priser');
   const rows = vyRader();
   if (!rows.length) { el.innerHTML = '<div class="note">Inga priser för vald period.</div>'; return; }
-  el.innerHTML = '<div class="note">Pris, kr/kWh. Före den orange linjen de priser som gällde, efter den kommande.</div><div id="ch-pris"></div>';
+  const harProg = rows.some(r => r.prog);
+  el.innerHTML = '<div class="note">Pris, kr/kWh. Före den orange linjen de priser som gällde, efter den kommande.'
+    + (harProg ? ' Ljusa staplar och streckad linje är prognos, eftersom morgondagens priser inte är publicerade än.' : '')
+    + '</div><div id="ch-pris"></div>';
+  const lines = [{ n:'export', v: rows.map(r => r.prog ? null : r.exp), c:'var(--self)' }];
+  if (harProg) lines.push({ n:'export, prognos', dash: true, c:'var(--self)',
+    v: rows.map((r, i) => (r.prog || (rows[i+1] && rows[i+1].prog)) ? r.exp : null) });
   ritaChart('ch-pris', {
-    bars:  { n:'import', v: rows.map(r => r.imp), c:'var(--discharge)' },
-    lines: [{ n:'export', v: rows.map(r => r.exp), c:'var(--self)' }],
+    bars:  { n:'import', v: rows.map(r => r.imp), c:'var(--discharge)', svag: rows.map(r => r.prog) },
+    lines,
+    etikett: rows.map(r => r.prog ? 'prisprognos' : ''),
     times:  rows.map(r => r.k % 12 === 0 ? qH(r.k) : ''),
     times2: rows.map(r => kTid(r.k)),
     nu: nuIndex(rows), hojd: 130,
@@ -444,7 +452,7 @@ function byggDygn(){
     k: cq+i, faktisk:false,
     sol: DBG.solar ? DBG.solar[i] : null, last: DBG.load ? DBG.load[i] : null,
     batt: (e.b === undefined ? null : e.b), grid: (e.g === undefined ? null : e.g), soc: e.soc,
-    mode: e.mode, power: e.power,
+    mode: e.mode, power: e.power, prog: !!e.prog,
     imp: DBG.imp ? DBG.imp[i] : null, exp: DBG.exp ? DBG.exp[i] : null,
   }));
   return rows;
@@ -571,7 +579,7 @@ function ritaFloden(){
     const r = rows[i];
     const imp = r.grid === null ? null : Math.max(0, r.grid);
     const exp = r.grid === null ? null : Math.max(0, -r.grid);
-    out.innerHTML = `<b>${kTid(r.k)}</b>${r.mode ? badge(r.mode, r.power) : ''}<span>${r.faktisk ? 'utfall' : 'plan'}</span>`
+    out.innerHTML = `<b>${kTid(r.k)}</b>${r.mode ? badge(r.mode, r.power) : ''}<span>${r.faktisk ? 'utfall' : (r.prog ? 'plan, prisprognos' : 'plan')}</span>`
       + `<span style="color:var(--sol)">sol <b>${f(r.sol)}</b></span>`
       + `<span style="color:var(--charge)">batteri <b>${f(r.batt)}</b></span>`
       + `<span style="color:var(--discharge)">import <b>${f(imp)}</b></span>`
