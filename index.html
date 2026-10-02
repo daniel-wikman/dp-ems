@@ -17,7 +17,17 @@
   }
   *,*::before,*::after{box-sizing:inherit}
   html{scroll-padding-top:env(safe-area-inset-top,0px)}
-  body{margin:0;background:var(--bg);color:var(--fg);
+  /* Bakgrund: nastan svart med svaga ljuskallor i mork orange, i ett fast
+     lager bakom innehallet. Fast bakgrund via background-attachment
+     fungerar inte i Safari pa iPhone, darfor ett eget lager. */
+  html{background:#08080a}
+  body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
+    background:
+      radial-gradient(ellipse 85% 55% at 25% -5%,  rgba(154,52,18,.34), transparent 70%),
+      radial-gradient(ellipse 60% 45% at 90% 20%,  rgba(124,45,18,.20), transparent 70%),
+      radial-gradient(ellipse 75% 50% at 40% 105%, rgba(110,38,12,.16), transparent 70%),
+      #08080a}
+  body{margin:0;background:transparent;color:var(--fg);
        font-family:'Inter',-apple-system,system-ui,sans-serif;font-size:15px;line-height:1.5}
   .wrap{max-width:720px;margin:0 auto;padding:14px}
   h1{font-size:17px;font-weight:600;margin:0 0 12px}
