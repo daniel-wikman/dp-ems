@@ -168,7 +168,9 @@
   <div class="inner">
     <label>Adress</label>
     <input id="c-url" placeholder="https://xxxx.connect.athom.com">
-    <label>Token</label>
+    <label>Nyckel till appen Ferret EMS</label>
+    <input id="c-plankey" type="password" placeholder="nyckeln ur diagnostik/plannyckel.txt">
+    <label>Token (valfri, om nyckeln saknas eller appen inte svarar)</label>
     <input id="c-token" type="password" placeholder="API-nyckel med läsrätt på Logic">
     <label>Loggens adress (valfri)</label>
     <input id="c-logurl" placeholder="https://script.google.com/macros/s/.../exec">
@@ -685,13 +687,45 @@ async function hamtaUtfall(){
   } catch(e) { /* behall senaste */ }
 }
 
+// Planen direkt fran appen Ferret EMS (läsväg med egen nyckel, inga Homey-rättigheter): samma
+// innehåll som variablerna DP_Plan, DP_Debug och DP_Exec_Log.
+async function hamtaFranApp(bas, nyckel){
+  const r = await fetch(bas + '/api/app/se.ferretems/plan?nyckel=' + encodeURIComponent(nyckel));
+  if (!r.ok) throw new Error('HTTP '+r.status);
+  const j = await r.json();
+  if (!j.ok) throw new Error(j.fel || 'okänt fel');
+  return j;
+}
+
 async function hamtaNu(){
   const bas = document.getElementById('c-url').value.trim().replace(/\/+$/,'');
   const token = document.getElementById('c-token').value.trim();
-  if (!bas || !token) { status('fyll i adress och token','bad'); return; }
+  const planKey = document.getElementById('c-plankey').value.trim();
+  if (!bas || (!token && !planKey)) { status('fyll i adress och nyckel eller token','bad'); return; }
+  const fel = [];
+  // Appens nyckel först; misslyckas den används Homeys variabler om en token finns
+  if (planKey){
+    try {
+      const j = await hamtaFranApp(bas, planKey);
+      document.getElementById('raw-plan').value  = j.plan  || '';
+      document.getElementById('raw-debug').value = j.debug || '';
+      document.getElementById('raw-exec').value  = j.exec  || '';
+      await hamtaUtfall();
+      renderaFranFalt();
+      const n = new Date();
+      status(`uppdaterad ${String(n.getHours()).padStart(2,'0')}:${String(n.getMinutes()).padStart(2,'0')} (appen)`,'ok');
+      document.getElementById('conn-log').innerHTML = '';
+      return;
+    } catch(e){ fel.push(`appen: ${e.message}`); }
+  }
+  if (!token){
+    status('ingen kontakt','bad');
+    document.getElementById('conn-log').innerHTML = fel.join('<br>');
+    document.getElementById('d-conn').open = true;
+    return;
+  }
   let cfg = {}; try { cfg = JSON.parse(localStorage.getItem('dpems'))||{}; } catch(e){}
   const varianter = cfg.variant ? [cfg.variant, cfg.variant==='query'?'header':'query'] : ['query','header'];
-  const fel = [];
   for (const v of varianter){
     try {
       const data = await hamta(bas, token, v);
@@ -719,21 +753,25 @@ async function hamtaNu(){
 function glomUppgifter(){
   try { localStorage.removeItem('dpems'); } catch(e){}
   document.getElementById('c-url').value=''; document.getElementById('c-token').value='';
+  document.getElementById('c-plankey').value='';
   status('uppgifterna borttagna','');
 }
 function skapaBokmarke(){
   const bas=document.getElementById('c-url').value.trim().replace(/\/+$/,'');
   const token=document.getElementById('c-token').value.trim();
-  if(!bas||!token){ status('fyll i adress och token','bad'); return; }
+  const planKey=document.getElementById('c-plankey').value.trim();
+  if(!bas||(!token&&!planKey)){ status('fyll i adress och nyckel eller token','bad'); return; }
   document.getElementById('conn-log').innerHTML =
-    'Spara som privat bokmärke. Länken innehåller din token:<br><span style="word-break:break-all">'
-    + location.origin + location.pathname + '#bas=' + encodeURIComponent(bas) + '&token=' + encodeURIComponent(token)
+    'Spara som privat bokmärke. Länken innehåller din nyckel och token:<br><span style="word-break:break-all">'
+    + location.origin + location.pathname + '#bas=' + encodeURIComponent(bas)
+    + (token ? '&token=' + encodeURIComponent(token) : '') + (planKey ? '&plan=' + encodeURIComponent(planKey) : '')
     + '</span>';
 }
 function sparaFalt(){
   let cfg={}; try{ cfg=JSON.parse(localStorage.getItem('dpems'))||{}; }catch(e){}
   cfg.bas = document.getElementById('c-url').value.trim().replace(/\/+$/,'');
   cfg.token = document.getElementById('c-token').value.trim();
+  cfg.planKey = document.getElementById('c-plankey').value.trim();
   cfg.logUrl = document.getElementById('c-logurl').value.trim();
   cfg.logKey = document.getElementById('c-logkey').value.trim();
   try { localStorage.setItem('dpems', JSON.stringify(cfg)); } catch(e){}
@@ -742,14 +780,15 @@ function sparaFalt(){
 window.addEventListener('load', () => {
   let cfg=null; try{ cfg=JSON.parse(localStorage.getItem('dpems')); }catch(e){}
   const h = new URLSearchParams(location.hash.slice(1));
-  if (h.get('bas') && h.get('token')){
-    cfg = { bas:h.get('bas'), token:h.get('token'), variant: cfg && cfg.variant };
+  if (h.get('bas') && (h.get('token') || h.get('plan'))){
+    cfg = { ...(cfg||{}), bas:h.get('bas'), token:h.get('token') || (cfg && cfg.token) || '', planKey:h.get('plan') || (cfg && cfg.planKey) || '', variant: cfg && cfg.variant };
     try { localStorage.setItem('dpems', JSON.stringify(cfg)); } catch(e){}
     history.replaceState(null,'',location.pathname);
   }
   if (cfg){
     document.getElementById('c-url').value = cfg.bas || '';
     document.getElementById('c-token').value = cfg.token || '';
+    document.getElementById('c-plankey').value = cfg.planKey || '';
     document.getElementById('c-logurl').value = cfg.logUrl || '';
     document.getElementById('c-logkey').value = cfg.logKey || '';
     hamtaNu();
@@ -759,6 +798,7 @@ window.addEventListener('load', () => {
   document.querySelectorAll('#vy button').forEach(b => b.addEventListener('click', () => valjVy(b.dataset.vy)));
   document.getElementById('c-url').addEventListener('change', sparaFalt);
   document.getElementById('c-token').addEventListener('change', sparaFalt);
+  document.getElementById('c-plankey').addEventListener('change', sparaFalt);
   document.getElementById('c-logurl').addEventListener('change', sparaFalt);
   document.getElementById('c-logkey').addEventListener('change', sparaFalt);
   setInterval(hamtaNu, 60000);
